@@ -162,7 +162,7 @@ export class FocusWorker {
           this.service.setStatus(task.id, 'ARMED');
         }
 
-        this.service.setNextPollAt(task.id, now + task.pollSec);
+        this.service.setNextPollAt(task.id, now + this.resolveArmedPollSec(task, decision.remainingSec));
         await this.service.emitMonitoringHeartbeat(task);
         return;
       }
@@ -273,6 +273,17 @@ export class FocusWorker {
 
   private resolveBiddingPollSec(task: FocusTask): number {
     return Math.max(task.pollSec, this.biddingPollSec);
+  }
+
+  private resolveArmedPollSec(task: FocusTask, remainingSec: number | null): number {
+    if (remainingSec === null) return task.pollSec;
+
+    const secToWindow = remainingSec - task.startWhenRemainingSec;
+    if (secToWindow <= 1) return task.pollSec;
+
+    // Wake up slightly before entering the bidding window to avoid boundary misses.
+    const wakeAheadSec = 5;
+    return Math.max(1, secToWindow - wakeAheadSec);
   }
 
   private async handleMissingAuction(task: FocusTask, lastSeenUntil: number | null, missingSince: number | null): Promise<void> {

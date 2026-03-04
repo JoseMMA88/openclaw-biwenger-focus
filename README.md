@@ -41,6 +41,7 @@ Copia `.env.example` a `.env` y ajusta:
 - `TELEGRAM_CHAT_ID=...`
 - `TZ=Europe/Madrid`
 - `FOCUS_BIDDING_POLL_SEC=900` (15 min en estado `BIDDING`)
+- En estado `ARMED`, el siguiente ciclo se programa automáticamente para despertar cuando falte ~1h de subasta.
 - Credenciales Biwenger para el MCP:
   - `BIWENGER_TOKEN` **o** `BIWENGER_EMAIL` + `BIWENGER_PASSWORD`
   - `BIWENGER_LEAGUE_ID`
