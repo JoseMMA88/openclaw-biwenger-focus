@@ -21,6 +21,18 @@ interface DecideInput {
   isCurrentHighestBidder: boolean;
 }
 
+function nextBidAmount(currentPrice: number | null, task: FocusTask, runtime: FocusRuntime): number | null {
+  if (currentPrice === null || currentPrice <= 0) return null;
+
+  // Entry bid: use the minimum visible market price.
+  if (runtime.lastBidAmount === null) {
+    return currentPrice;
+  }
+
+  // Re-bids keep the configured fixed step.
+  return currentPrice + task.bidStep;
+}
+
 export function decideBidAction(input: DecideInput): BidDecision {
   const { nowSec, task, runtime, auction, isCurrentHighestBidder } = input;
 
@@ -35,13 +47,14 @@ export function decideBidAction(input: DecideInput): BidDecision {
 
   const remainingSec = auction.until === null ? null : auction.until - nowSec;
   const currentPrice = auction.currentPrice ?? runtime.lastSeenPrice;
+  const targetBid = nextBidAmount(currentPrice, task, runtime);
 
   if (remainingSec === null || remainingSec > task.startWhenRemainingSec) {
     return {
       action: 'MONITOR_ARMED',
       reason: 'outside_bidding_window',
       remainingSec,
-      targetBid: currentPrice === null ? null : currentPrice + task.bidStep
+      targetBid
     };
   }
 
@@ -53,8 +66,14 @@ export function decideBidAction(input: DecideInput): BidDecision {
       targetBid: null
     };
   }
-
-  const targetBid = currentPrice + task.bidStep;
+  if (targetBid === null) {
+    return {
+      action: 'MONITOR_BIDDING',
+      reason: 'price_unavailable',
+      remainingSec,
+      targetBid: null
+    };
+  }
 
   if (targetBid > task.maxPrice) {
     return {
