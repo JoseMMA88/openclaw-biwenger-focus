@@ -4,6 +4,27 @@
   "version": "0.1.3",
   "entry": "dist/index.js",
   "description": "Automatic Biwenger auction focus worker with conservative bidding strategy",
+  "permissions": {
+    "network": {
+      "allow": [
+        "https://api.telegram.org"
+      ]
+    },
+    "process": {
+      "spawn": true
+    },
+    "filesystem": {
+      "read": [
+        "/opt/biwenger-mcp",
+        "/usr/bin",
+        "/usr/local/bin"
+      ],
+      "write": [
+        "/var/lib/openclaw",
+        "/tmp"
+      ]
+    }
+  },
   "configSchema": {
     "type": "object",
     "properties": {
