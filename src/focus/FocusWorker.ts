@@ -223,6 +223,17 @@ export class FocusWorker {
           return;
         }
 
+        // Failsafe: never bid if the current highest bid is already ours.
+        if (
+          patchedRuntime.myUserId !== null
+          && patchedRuntime.ownerUserId !== null
+          && patchedRuntime.myUserId === patchedRuntime.ownerUserId
+        ) {
+          this.service.setStatus(task.id, 'BIDDING');
+          this.service.setNextPollAt(task.id, now + task.pollSec);
+          return;
+        }
+
         await this.gateway.placeBid(task.playerId, decision.targetBid);
 
         this.service.patchRuntime(task.id, {

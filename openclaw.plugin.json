@@ -1,7 +1,7 @@
 {
   "id": "biwenger-focus",
   "name": "Biwenger Focus",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "entry": "dist/index.js",
   "description": "Automatic Biwenger auction focus worker with conservative bidding strategy",
   "permissions": {
