@@ -144,7 +144,12 @@ export class FocusService {
     const runtime = this.repo.getRuntime(task.id);
 
     const remainingSec = runtime.lastSeenUntil === null ? null : runtime.lastSeenUntil - nowSec();
-    const nextBidAmount = runtime.lastSeenPrice === null ? null : runtime.lastSeenPrice + task.bidStep;
+    const nextBidAmount = (() => {
+      if (runtime.lastSeenPrice === null) return null;
+      if (runtime.lastBidAmount === null) return runtime.lastSeenPrice;
+      if (runtime.lastSeenPrice > runtime.lastBidAmount) return runtime.lastSeenPrice;
+      return null;
+    })();
 
     return {
       task,

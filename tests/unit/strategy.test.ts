@@ -99,7 +99,7 @@ describe('decideBidAction', () => {
       auction: {
         playerId: 10,
         playerName: 'Mbappe',
-        currentPrice: 400_000,
+        currentPrice: 430_000,
         until: now + 200,
         highestBidderUserId: 123,
         raw: {}
@@ -110,7 +110,7 @@ describe('decideBidAction', () => {
     expect(result.action).toBe('MAX_REACHED');
   });
 
-  it('uses bid_step after first bid has been placed', () => {
+  it('uses minimum visible price after first bid has been placed', () => {
     const now = 1_699_995_000;
 
     const result = decideBidAction({
@@ -129,7 +129,29 @@ describe('decideBidAction', () => {
     });
 
     expect(result.action).toBe('PLACE_BID');
-    expect(result.targetBid).toBe(460_000);
+    expect(result.targetBid).toBe(410_000);
+  });
+
+  it('does not place duplicate bid when price did not rise', () => {
+    const now = 1_699_995_000;
+
+    const result = decideBidAction({
+      nowSec: now,
+      task: buildTask(),
+      runtime: buildRuntime({ lastBidAmount: 410_000 }),
+      auction: {
+        playerId: 10,
+        playerName: 'Mbappe',
+        currentPrice: 410_000,
+        until: now + 300,
+        highestBidderUserId: 123,
+        raw: {}
+      },
+      isCurrentHighestBidder: false
+    });
+
+    expect(result.action).toBe('MONITOR_BIDDING');
+    expect(result.targetBid).toBeNull();
   });
 
   it('returns WAIT_COOLDOWN when cooldown is active', () => {
