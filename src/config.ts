@@ -16,6 +16,7 @@ export interface PluginConfig {
   missingTimeoutSec: number;
   tickSec: number;
   maxConsecutiveErrors: number;
+  biddingPollSec: number;
   defaults: {
     startWhenRemainingSec: number;
     bidStep: number;
@@ -121,6 +122,7 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     missingTimeoutSec: toPositiveInt(env.FOCUS_MISSING_TIMEOUT_SEC, 600),
     tickSec: toPositiveInt(env.FOCUS_TICK_SEC, 2),
     maxConsecutiveErrors: toPositiveInt(env.FOCUS_MAX_CONSECUTIVE_ERRORS, 15),
+    biddingPollSec: toPositiveInt(env.FOCUS_BIDDING_POLL_SEC, 900),
     defaults: {
       startWhenRemainingSec: 3600,
       bidStep: 50000,

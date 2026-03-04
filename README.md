@@ -40,6 +40,7 @@ Copia `.env.example` a `.env` y ajusta:
 - `TELEGRAM_BOT_TOKEN=...`
 - `TELEGRAM_CHAT_ID=...`
 - `TZ=Europe/Madrid`
+- `FOCUS_BIDDING_POLL_SEC=900` (15 min en estado `BIDDING`)
 - Credenciales Biwenger para el MCP:
   - `BIWENGER_TOKEN` **o** `BIWENGER_EMAIL` + `BIWENGER_PASSWORD`
   - `BIWENGER_LEAGUE_ID`
@@ -59,7 +60,7 @@ Copia `.env.example` a `.env` y ajusta:
    - `cd /opt/openclaw/plugins/biwenger-focus`
    - `npm install`
    - `npm run build`
-   - usar `plugins.load.paths` apuntando a `/opt/openclaw/plugins/biwenger-focus/openclaw.plugin.json`
+   - usar `plugins.load.paths` apuntando a `/opt/openclaw/plugins/biwenger-focus/dist/index.js`
 3. Crear `.env` en la carpeta del plugin.
    - Incluye también `BIWENGER_*` (o `DOTENV_CONFIG_PATH` apuntando al `.env` del MCP).
 4. Verificar permisos de DB:

@@ -13,6 +13,7 @@ interface FocusWorkerOptions {
   missingTimeoutSec: number;
   tickSec: number;
   maxConsecutiveErrors: number;
+  biddingPollSec: number;
 }
 
 interface RosterCache {
@@ -29,6 +30,7 @@ export class FocusWorker {
   private readonly missingTimeoutSec: number;
   private readonly tickSec: number;
   private readonly maxConsecutiveErrors: number;
+  private readonly biddingPollSec: number;
 
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
@@ -42,6 +44,7 @@ export class FocusWorker {
     this.missingTimeoutSec = options.missingTimeoutSec;
     this.tickSec = options.tickSec;
     this.maxConsecutiveErrors = options.maxConsecutiveErrors;
+    this.biddingPollSec = options.biddingPollSec;
   }
 
   start(): void {
@@ -195,7 +198,7 @@ export class FocusWorker {
           );
         }
 
-        this.service.setNextPollAt(task.id, now + task.pollSec);
+        this.service.setNextPollAt(task.id, now + this.resolveBiddingPollSec(task));
         return;
       }
 
@@ -244,7 +247,7 @@ export class FocusWorker {
         });
 
         this.service.setStatus(task.id, 'BIDDING');
-        this.service.setNextPollAt(task.id, now + task.pollSec);
+        this.service.setNextPollAt(task.id, now + this.resolveBiddingPollSec(task));
 
         await this.service.emitEvent(
           task.id,
@@ -266,6 +269,10 @@ export class FocusWorker {
         return;
       }
     }
+  }
+
+  private resolveBiddingPollSec(task: FocusTask): number {
+    return Math.max(task.pollSec, this.biddingPollSec);
   }
 
   private async handleMissingAuction(task: FocusTask, lastSeenUntil: number | null, missingSince: number | null): Promise<void> {
