@@ -33,7 +33,7 @@ npm test
 
 Copia `.env.example` a `.env` y ajusta:
 
-- `MCP_COMMAND=node`
+- `MCP_COMMAND=/usr/bin/node` (recomendado en systemd)
 - `MCP_ARGS=/opt/biwenger-mcp/dist/server.js`
 - `MCP_CWD=/opt/biwenger-mcp` (recomendado)
 - `FOCUS_DB_PATH=/var/lib/openclaw/biwenger-focus.db`

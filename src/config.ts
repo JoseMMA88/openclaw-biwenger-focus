@@ -75,7 +75,12 @@ function parseMcpArgs(value: unknown, fallback: string): string[] {
 }
 
 export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.ProcessEnv = process.env): PluginConfig {
-  const mcpCommand = toStringValue(rawConfig.mcp_command) ?? env.MCP_COMMAND ?? 'node';
+  const configuredMcpCommand = toStringValue(rawConfig.mcp_command) ?? toStringValue(env.MCP_COMMAND);
+  const mcpCommand = (() => {
+    if (!configuredMcpCommand) return process.execPath || '/usr/bin/node';
+    if (configuredMcpCommand === 'node') return process.execPath || configuredMcpCommand;
+    return configuredMcpCommand;
+  })();
   const defaultMcpEntry = '/opt/biwenger-mcp/dist/server.js';
   const mcpArgs = parseMcpArgs(rawConfig.mcp_args ?? env.MCP_ARGS, defaultMcpEntry);
   const mcpEntry = mcpArgs[0];
