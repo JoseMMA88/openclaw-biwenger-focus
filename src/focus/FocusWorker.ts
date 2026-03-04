@@ -174,6 +174,9 @@ export class FocusWorker {
           patchedRuntime.lastBidAmount !== null
           && auction.currentPrice !== null
           && auction.currentPrice > patchedRuntime.lastBidAmount
+          && patchedRuntime.myUserId !== null
+          && auction.highestBidderUserId !== null
+          && auction.highestBidderUserId !== patchedRuntime.myUserId
           && !isHighest
         ) {
           await this.service.emitEvent(
@@ -184,7 +187,9 @@ export class FocusWorker {
               focus_id: task.id,
               player_id: task.playerId,
               current_price: auction.currentPrice,
-              last_bid_amount: patchedRuntime.lastBidAmount
+              last_bid_amount: patchedRuntime.lastBidAmount,
+              highest_bidder_user_id: auction.highestBidderUserId,
+              my_user_id: patchedRuntime.myUserId
             },
             300
           );

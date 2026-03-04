@@ -114,12 +114,12 @@ export class BiwengerGateway {
 
     const currentPrice = pickFirstNumber(source, [
       'amount',
-      'price',
       'currentPrice',
       'bid.amount',
       'bidAmount',
       'offer.amount',
-      'startPrice'
+      'highestBid.amount',
+      'currentBid.amount'
     ]);
 
     const untilRaw = pickFirstNumber(source, ['until', 'end', 'endAt', 'expiresAt']);
@@ -128,10 +128,9 @@ export class BiwengerGateway {
     const highestBidderUserId = pickFirstPositiveInt(source, [
       'userID',
       'user.id',
-      'owner.id',
-      'to',
       'bid.user_id',
-      'highestBid.user_id'
+      'highestBid.user_id',
+      'currentBid.user_id'
     ]);
 
     return {
