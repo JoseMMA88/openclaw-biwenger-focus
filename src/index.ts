@@ -135,11 +135,12 @@ class PluginRuntime {
 }
 
 let runtime: PluginRuntime | null = null;
+let startupPromise: Promise<void> | null = null;
 
 export const plugin = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.2',
+  version: '0.1.3',
   onLoad: async (api: OpenClawApiLike) => {
     runtime = await PluginRuntime.create(api);
   },
@@ -150,4 +151,35 @@ export const plugin = {
   }
 };
 
-export default plugin;
+function reportStartupError(error: unknown): void {
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  // eslint-disable-next-line no-console
+  console.error('[biwenger-focus] startup failed:', message);
+}
+
+function start(api: OpenClawApiLike): void {
+  if (startupPromise) return;
+  startupPromise = plugin.onLoad(api)
+    .catch((error) => {
+      reportStartupError(error);
+      runtime = null;
+    })
+    .finally(() => {
+      startupPromise = null;
+    });
+}
+
+export function register(api: OpenClawApiLike): () => void {
+  start(api);
+  return () => {
+    void plugin.onUnload();
+  };
+}
+
+export const activate = register;
+
+export default {
+  id: plugin.id,
+  register,
+  activate
+};

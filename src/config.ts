@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 
 import type { LogLevel } from './logger.js';
@@ -93,7 +94,10 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     }
     return entryDir;
   })();
-  const mcpCwd = toStringValue(rawConfig.mcp_cwd) ?? toStringValue(env.MCP_CWD) ?? inferredMcpCwd;
+  const configuredMcpCwd = toStringValue(rawConfig.mcp_cwd) ?? toStringValue(env.MCP_CWD) ?? inferredMcpCwd;
+  const mcpCwd = configuredMcpCwd && existsSync(resolve(configuredMcpCwd))
+    ? resolve(configuredMcpCwd)
+    : undefined;
 
   const dbPathRaw = toStringValue(rawConfig.db_path) ?? env.FOCUS_DB_PATH ?? '/var/lib/openclaw/biwenger-focus.db';
   const dbPath = resolve(dbPathRaw);
@@ -107,7 +111,7 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
   return {
     mcpCommand,
     mcpArgs,
-    mcpCwd: mcpCwd ? resolve(mcpCwd) : undefined,
+    mcpCwd,
     dbPath,
     telegramBotToken,
     telegramChatId,

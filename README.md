@@ -59,6 +59,7 @@ Copia `.env.example` a `.env` y ajusta:
    - `cd /opt/openclaw/plugins/biwenger-focus`
    - `npm install`
    - `npm run build`
+   - usar `plugins.load.paths` apuntando a `/opt/openclaw/plugins/biwenger-focus/openclaw.plugin.json`
 3. Crear `.env` en la carpeta del plugin.
    - Incluye también `BIWENGER_*` (o `DOTENV_CONFIG_PATH` apuntando al `.env` del MCP).
 4. Verificar permisos de DB:
