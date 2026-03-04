@@ -80,7 +80,8 @@ class PluginRuntime {
       missingTimeoutSec: config.missingTimeoutSec,
       tickSec: config.tickSec,
       maxConsecutiveErrors: config.maxConsecutiveErrors,
-      biddingPollSec: config.biddingPollSec
+      biddingPollSec: config.biddingPollSec,
+      armedMaxPollSec: config.armedMaxPollSec
     });
   }
 
@@ -140,7 +141,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.10'
+  version: '0.1.11'
 };
 
 function reportStartupError(error: unknown): void {

@@ -14,6 +14,7 @@ interface FocusWorkerOptions {
   tickSec: number;
   maxConsecutiveErrors: number;
   biddingPollSec: number;
+  armedMaxPollSec: number;
 }
 
 interface RosterCache {
@@ -31,6 +32,7 @@ export class FocusWorker {
   private readonly tickSec: number;
   private readonly maxConsecutiveErrors: number;
   private readonly biddingPollSec: number;
+  private readonly armedMaxPollSec: number;
 
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
@@ -45,6 +47,7 @@ export class FocusWorker {
     this.tickSec = options.tickSec;
     this.maxConsecutiveErrors = options.maxConsecutiveErrors;
     this.biddingPollSec = options.biddingPollSec;
+    this.armedMaxPollSec = options.armedMaxPollSec;
   }
 
   start(): void {
@@ -276,14 +279,14 @@ export class FocusWorker {
   }
 
   private resolveArmedPollSec(task: FocusTask, remainingSec: number | null): number {
-    if (remainingSec === null) return task.pollSec;
+    if (remainingSec === null) return this.armedMaxPollSec;
 
     const secToWindow = remainingSec - task.startWhenRemainingSec;
-    if (secToWindow <= 1) return task.pollSec;
+    if (secToWindow <= 1) return Math.min(task.pollSec, this.armedMaxPollSec);
 
     // Wake up slightly before entering the bidding window to avoid boundary misses.
     const wakeAheadSec = 5;
-    return Math.max(1, secToWindow - wakeAheadSec);
+    return Math.max(1, Math.min(this.armedMaxPollSec, secToWindow - wakeAheadSec));
   }
 
   private async handleMissingAuction(task: FocusTask, lastSeenUntil: number | null, missingSince: number | null): Promise<void> {
