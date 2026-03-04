@@ -136,19 +136,10 @@ class PluginRuntime {
 
 let runtime: PluginRuntime | null = null;
 let startupPromise: Promise<void> | null = null;
-
-export const plugin = {
+const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.3',
-  onLoad: async (api: OpenClawApiLike) => {
-    runtime = await PluginRuntime.create(api);
-  },
-  onUnload: async () => {
-    if (!runtime) return;
-    await runtime.stop();
-    runtime = null;
-  }
+  version: '0.1.4'
 };
 
 function reportStartupError(error: unknown): void {
@@ -157,9 +148,19 @@ function reportStartupError(error: unknown): void {
   console.error('[biwenger-focus] startup failed:', message);
 }
 
+async function startRuntime(api: OpenClawApiLike): Promise<void> {
+  runtime = await PluginRuntime.create(api);
+}
+
+async function stopRuntime(): Promise<void> {
+  if (!runtime) return;
+  await runtime.stop();
+  runtime = null;
+}
+
 function start(api: OpenClawApiLike): void {
   if (startupPromise) return;
-  startupPromise = plugin.onLoad(api)
+  startupPromise = startRuntime(api)
     .catch((error) => {
       reportStartupError(error);
       runtime = null;
@@ -172,14 +173,16 @@ function start(api: OpenClawApiLike): void {
 export function register(api: OpenClawApiLike): () => void {
   start(api);
   return () => {
-    void plugin.onUnload();
+    void stopRuntime();
   };
 }
 
 export const activate = register;
 
 export default {
-  id: plugin.id,
+  id: PLUGIN_META.id,
+  name: PLUGIN_META.name,
+  version: PLUGIN_META.version,
   register,
   activate
 };
