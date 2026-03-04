@@ -1,29 +1,10 @@
 {
-  "schema_version": "1.0",
   "id": "biwenger-focus",
   "name": "Biwenger Focus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "dist/index.js",
   "description": "Automatic Biwenger auction focus worker with conservative bidding strategy",
-  "permissions": {
-    "network": {
-      "allow": [
-        "https://api.telegram.org"
-      ]
-    },
-    "process": {
-      "spawn": true
-    },
-    "filesystem": {
-      "read": [
-        "/opt/biwenger-mcp"
-      ],
-      "write": [
-        "/var/lib/openclaw"
-      ]
-    }
-  },
-  "config_schema": {
+  "configSchema": {
     "type": "object",
     "properties": {
       "mcp_command": { "type": "string" },

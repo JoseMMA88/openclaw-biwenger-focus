@@ -139,7 +139,7 @@ let runtime: PluginRuntime | null = null;
 export const plugin = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.0',
+  version: '0.1.1',
   onLoad: async (api: OpenClawApiLike) => {
     runtime = await PluginRuntime.create(api);
   },
@@ -150,4 +150,9 @@ export const plugin = {
   }
 };
 
-export default plugin;
+export default async function registerPlugin(api: OpenClawApiLike): Promise<void | (() => Promise<void>)> {
+  await plugin.onLoad(api);
+  return async () => {
+    await plugin.onUnload();
+  };
+}
