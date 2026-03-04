@@ -3,48 +3,50 @@ import { Logger } from '../logger.js';
 import type { FocusStatus } from '../domain/focus.js';
 
 interface OpenClawApiLike {
-  registerTool?: (tool: Record<string, unknown>) => void | Promise<void>;
+  registerTool?: (tool: Record<string, unknown>, options?: Record<string, unknown>) => void | Promise<void>;
 }
 
-function extractArgs(raw: unknown): Record<string, unknown> {
-  if (raw && typeof raw === 'object' && Object.hasOwn(raw, 'input')) {
-    const input = (raw as Record<string, unknown>).input;
-    if (input && typeof input === 'object') return input as Record<string, unknown>;
-  }
-
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
-  return {};
+function toToolResult(payload: Record<string, unknown>): Record<string, unknown> {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(payload)
+      }
+    ],
+    structuredContent: payload
+  };
 }
 
 function success(payload: Record<string, unknown>): Record<string, unknown> {
-  return { ok: true, ...payload };
+  return toToolResult({ ok: true, ...payload });
 }
 
 function failure(error: unknown): Record<string, unknown> {
   if (error instanceof FocusError) {
-    return {
+    return toToolResult({
       ok: false,
       error_code: error.code,
       error: error.message,
       details: error.details ?? null
-    };
+    });
   }
 
   if (error instanceof Error) {
-    return {
+    return toToolResult({
       ok: false,
       error_code: 'INTERNAL_ERROR',
       error: error.message,
       details: null
-    };
+    });
   }
 
-  return {
+  return toToolResult({
     ok: false,
     error_code: 'INTERNAL_ERROR',
     error: 'Unknown error',
     details: null
-  };
+  });
 }
 
 function toOptionalPositiveInt(value: unknown, field: string): number | undefined {
@@ -87,10 +89,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
 
   const tools: Array<Record<string, unknown>> = [
     {
-      id: 'biwenger_focus_create',
       name: 'biwenger_focus_create',
       description: 'Crea un foco automático de subasta para un jugador de Biwenger.',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           player_query: { type: 'string' },
@@ -104,9 +105,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
         required: ['player_query', 'max_price'],
         additionalProperties: false
       },
-      execute: async (raw: unknown) => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const args = extractArgs(raw);
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           const result = await service.createFocus({
             playerQuery: String(args.player_query ?? ''),
             maxPrice: Number(args.max_price),
@@ -136,10 +137,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
       }
     },
     {
-      id: 'biwenger_focus_status',
       name: 'biwenger_focus_status',
       description: 'Consulta estado de un foco por focus_id o player_query.',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           focus_id: { type: 'string' },
@@ -147,9 +147,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
         },
         additionalProperties: false
       },
-      execute: async (raw: unknown) => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const args = extractArgs(raw);
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           const result = service.getStatus({
             focusId: typeof args.focus_id === 'string' ? args.focus_id : undefined,
             playerQuery: typeof args.player_query === 'string' ? args.player_query : undefined
@@ -174,10 +174,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
       }
     },
     {
-      id: 'biwenger_focus_list',
       name: 'biwenger_focus_list',
       description: 'Lista focos activos o finalizados.',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           status: { type: 'string' },
@@ -185,9 +184,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
         },
         additionalProperties: false
       },
-      execute: async (raw: unknown) => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const args = extractArgs(raw);
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           const status = toOptionalStatus(args.status);
           const limit = toOptionalPositiveInt(args.limit, 'limit') ?? 50;
           const tasks = service.list(status, limit);
@@ -214,10 +213,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
       }
     },
     {
-      id: 'biwenger_focus_update',
       name: 'biwenger_focus_update',
       description: 'Actualiza configuración editable de un foco.',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           focus_id: { type: 'string' },
@@ -230,9 +228,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
         required: ['focus_id'],
         additionalProperties: false
       },
-      execute: async (raw: unknown) => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const args = extractArgs(raw);
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           if (typeof args.focus_id !== 'string' || args.focus_id.trim().length === 0) {
             throw new FocusError('VALIDATION_ERROR', 'focus_id es obligatorio.');
           }
@@ -264,10 +262,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
       }
     },
     {
-      id: 'biwenger_focus_cancel',
       name: 'biwenger_focus_cancel',
       description: 'Cancela un foco activo.',
-      inputSchema: {
+      parameters: {
         type: 'object',
         properties: {
           focus_id: { type: 'string' }
@@ -275,9 +272,9 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
         required: ['focus_id'],
         additionalProperties: false
       },
-      execute: async (raw: unknown) => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const args = extractArgs(raw);
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           if (typeof args.focus_id !== 'string' || args.focus_id.trim().length === 0) {
             throw new FocusError('VALIDATION_ERROR', 'focus_id es obligatorio.');
           }
@@ -298,12 +295,6 @@ export async function registerFocusTools(api: OpenClawApiLike, service: FocusSer
   ];
 
   for (const tool of tools) {
-    const execute = tool.execute as (raw: unknown) => Promise<Record<string, unknown>>;
-
-    await api.registerTool({
-      ...tool,
-      run: execute,
-      handler: execute
-    });
+    await api.registerTool(tool);
   }
 }
