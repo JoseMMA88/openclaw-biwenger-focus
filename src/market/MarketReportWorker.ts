@@ -1,6 +1,7 @@
 import { BiwengerGateway } from '../gateway/BiwengerGateway.js';
 import { Logger } from '../logger.js';
 import { MarketReportService } from './MarketReportService.js';
+import type { AuctionSnapshot } from '../domain/focus.js';
 
 interface MarketReportWorkerOptions {
   service: MarketReportService;
@@ -19,6 +20,7 @@ export class MarketReportWorker {
 
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
+  private readonly playerNameCache = new Map<number, string>();
 
   constructor(options: MarketReportWorkerOptions) {
     this.service = options.service;
@@ -62,6 +64,7 @@ export class MarketReportWorker {
 
   async runReportNow(force = false): Promise<boolean> {
     const auctions = await this.gateway.getAuctions();
+    await this.hydrateAuctionNames(auctions);
     this.service.observeAuctions(auctions);
     const report = await this.service.emitDailyReport(auctions, undefined, { force });
     return report !== null;
@@ -73,6 +76,7 @@ export class MarketReportWorker {
 
     try {
       const auctions = await this.gateway.getAuctions();
+      await this.hydrateAuctionNames(auctions);
       this.service.observeAuctions(auctions);
 
       if (this.service.isDailyReportDue()) {
@@ -86,5 +90,41 @@ export class MarketReportWorker {
     } finally {
       this.runningTick = false;
     }
+  }
+
+  private async hydrateAuctionNames(auctions: AuctionSnapshot[]): Promise<void> {
+    const missing = auctions.filter((entry) => this.isMissingPlayerName(entry.playerName));
+    if (missing.length === 0) return;
+
+    await Promise.all(
+      missing.map(async (entry) => {
+        const cached = this.playerNameCache.get(entry.playerId);
+        if (cached) {
+          entry.playerName = cached;
+          return;
+        }
+
+        try {
+          const resolved = await this.gateway.getPlayerDisplayName(entry.playerId);
+          if (resolved && resolved.trim().length > 0) {
+            this.playerNameCache.set(entry.playerId, resolved);
+            entry.playerName = resolved;
+          }
+        } catch (error) {
+          this.logger.debug('Failed to resolve player display name', {
+            action: 'market_player_name_resolve_failed',
+            player_id: entry.playerId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      })
+    );
+  }
+
+  private isMissingPlayerName(playerName: string | null): boolean {
+    if (!playerName) return true;
+    const normalized = playerName.trim();
+    if (normalized.length === 0) return true;
+    return /^Player\\s+\\d+$/i.test(normalized);
   }
 }

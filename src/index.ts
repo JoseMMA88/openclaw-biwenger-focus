@@ -196,7 +196,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.14'
+  version: '0.1.15'
 };
 
 function reportStartupError(error: unknown): void {

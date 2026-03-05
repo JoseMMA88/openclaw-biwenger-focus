@@ -128,6 +128,30 @@ export class BiwengerGateway {
     };
   }
 
+  async getPlayerDisplayName(playerId: number, competition?: string): Promise<string | null> {
+    const payload = await this.mcp.callTool('biwenger_player_get_details', {
+      player_id: playerId,
+      competition
+    });
+
+    const data = asRecord(payload.data);
+    const player = asRecord(data.player);
+    const source = {
+      ...payload,
+      data,
+      player
+    };
+
+    return pickFirstString(source, [
+      'player.name',
+      'player.shortName',
+      'player.displayName',
+      'player.nickname',
+      'player.fullName',
+      'name'
+    ]);
+  }
+
   async payClause(playerId: number, ownerUserId: number, amount: number): Promise<void> {
     const payload = await this.mcp.callTool('biwenger_offers_pay_clause', {
       player_id: String(playerId),
@@ -187,8 +211,12 @@ export class BiwengerGateway {
         'player.displayName',
         'player.nickname',
         'player.fullName',
+        'playerName',
+        'player_name',
+        'player.playerName',
         'name',
-        'playerName'
+        'requestedPlayer.name',
+        'requestedPlayers.0.name'
       ]
     );
 
