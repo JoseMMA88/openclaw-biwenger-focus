@@ -357,14 +357,32 @@ export class BiwengerGateway {
       'market',
       'players',
       'marketPlayers',
+      'market_list',
+      'marketList',
+      'dailyMarket',
+      'publicMarket',
+      'public_market',
       'data.market',
       'data.players',
+      'data.marketPlayers',
+      'data.market_list',
+      'data.marketList',
+      'data.dailyMarket',
+      'data.publicMarket',
       'raw.market',
       'raw.players',
+      'raw.marketPlayers',
+      'raw.market_list',
+      'raw.marketList',
       'raw.data.market',
       'raw.data.players',
+      'raw.data.marketPlayers',
+      'raw.data.market_list',
+      'raw.data.marketList',
+      'snapshot.dailyMarket',
       'snapshot.market',
-      'snapshot.players'
+      'snapshot.players',
+      'snapshot.marketPlayers'
     ];
 
     const arrays: Array<Array<Record<string, unknown>>> = [];
@@ -385,10 +403,6 @@ export class BiwengerGateway {
       ['player.id', 'playerID', 'player_id', 'requestedPlayers.0', 'id']
     );
     if (!playerId) return null;
-
-    // Exclude auction-like entries from daily market stream.
-    const maybeUntil = pickFirstNumber(source, ['until', 'end', 'endAt', 'expiresAt']);
-    if (maybeUntil !== null && maybeUntil > 0) return null;
 
     const playerName = pickFirstString(
       { ...source, player: playerNode },
