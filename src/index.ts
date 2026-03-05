@@ -1,5 +1,8 @@
 import 'dotenv/config';
 
+import { ClauseService } from './clause/ClauseService.js';
+import { ClauseWorker } from './clause/ClauseWorker.js';
+import { ClauseRepository } from './db/ClauseRepository.js';
 import { loadConfig, type OpenClawRuntimeConfig } from './config.js';
 import { FocusRepository } from './db/FocusRepository.js';
 import { SqliteStore } from './db/SqliteStore.js';
@@ -12,6 +15,7 @@ import { CompositeNotifier } from './notify/CompositeNotifier.js';
 import { LogNotifier } from './notify/LogNotifier.js';
 import type { Notifier } from './notify/Notifier.js';
 import { TelegramNotifier } from './notify/TelegramNotifier.js';
+import { registerClauseTools } from './tools/ClauseTools.js';
 import { registerFocusTools } from './tools/FocusTools.js';
 
 interface OpenClawApiLike {
@@ -32,8 +36,10 @@ class PluginRuntime {
   private readonly store: SqliteStore;
   private readonly mcpClient: McpBiwengerClient;
   private readonly service: FocusService;
+  private readonly clauseService: ClauseService;
   private readonly gateway: BiwengerGateway;
   private readonly worker: FocusWorker;
+  private readonly clauseWorker: ClauseWorker;
 
   private constructor(api: OpenClawApiLike) {
     this.api = api;
@@ -43,7 +49,8 @@ class PluginRuntime {
     this.logger = new Logger(config.logLevel);
 
     this.store = new SqliteStore(config.dbPath);
-    const repo = new FocusRepository(this.store);
+    const focusRepo = new FocusRepository(this.store);
+    const clauseRepo = new ClauseRepository(this.store);
 
     this.mcpClient = new McpBiwengerClient({
       command: config.mcpCommand,
@@ -65,11 +72,17 @@ class PluginRuntime {
 
     const notifier = new CompositeNotifier(notifiers);
     this.service = new FocusService({
-      repo,
+      repo: focusRepo,
       gateway: this.gateway,
       notifier,
       logger: this.logger,
       defaults: config.defaults
+    });
+    this.clauseService = new ClauseService({
+      repo: clauseRepo,
+      gateway: this.gateway,
+      notifier,
+      logger: this.logger
     });
 
     this.worker = new FocusWorker({
@@ -83,6 +96,15 @@ class PluginRuntime {
       biddingPollSec: config.biddingPollSec,
       armedMaxPollSec: config.armedMaxPollSec
     });
+
+    this.clauseWorker = new ClauseWorker({
+      service: this.clauseService,
+      gateway: this.gateway,
+      logger: this.logger,
+      lockTtlSec: config.lockTtlSec,
+      tickSec: config.tickSec,
+      maxConsecutiveErrors: config.maxConsecutiveErrors
+    });
   }
 
   static async create(api: OpenClawApiLike): Promise<PluginRuntime> {
@@ -93,6 +115,7 @@ class PluginRuntime {
 
   async stop(): Promise<void> {
     this.worker.stop();
+    this.clauseWorker.stop();
     await this.mcpClient.close();
     this.store.close();
   }
@@ -102,6 +125,7 @@ class PluginRuntime {
     await this.gateway.ping();
 
     await registerFocusTools(this.api, this.service, this.logger);
+    await registerClauseTools(this.api, this.clauseService, this.logger);
 
     if (this.api.registerService) {
       await this.api.registerService({
@@ -109,14 +133,17 @@ class PluginRuntime {
         name: 'Biwenger Focus Worker',
         start: async () => {
           this.worker.start();
+          this.clauseWorker.start();
         },
         stop: async () => {
           this.worker.stop();
+          this.clauseWorker.stop();
         }
       });
     }
 
     this.worker.start();
+    this.clauseWorker.start();
 
     this.logger.info('Biwenger focus plugin loaded', {
       action: 'plugin_loaded'
@@ -141,7 +168,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.11'
+  version: '0.1.12'
 };
 
 function reportStartupError(error: unknown): void {

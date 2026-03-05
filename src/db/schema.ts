@@ -62,4 +62,52 @@ ON focus_events(focus_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_tasks_unique_active_player
 ON focus_tasks(player_id)
 WHERE status IN ('PENDING', 'ARMED', 'BIDDING');
+
+CREATE TABLE IF NOT EXISTS clause_tasks (
+  id TEXT PRIMARY KEY,
+  player_query TEXT NOT NULL,
+  player_id INTEGER NOT NULL,
+  player_name TEXT NOT NULL,
+  competition TEXT,
+  max_clause_amount INTEGER NOT NULL,
+  scheduled_at INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  stop_reason TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  executed_at INTEGER,
+  next_run_at INTEGER NOT NULL,
+  lock_token TEXT,
+  lock_expires_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS clause_runtime (
+  clause_id TEXT PRIMARY KEY,
+  last_seen_clause_amount INTEGER,
+  last_seen_owner_user_id INTEGER,
+  executed_amount INTEGER,
+  consecutive_errors INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  FOREIGN KEY (clause_id) REFERENCES clause_tasks(id)
+);
+
+CREATE TABLE IF NOT EXISTS clause_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  clause_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  event_hash TEXT,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (clause_id) REFERENCES clause_tasks(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_clause_tasks_status_next_run_at
+ON clause_tasks(status, next_run_at);
+
+CREATE INDEX IF NOT EXISTS idx_clause_events_clause_created_at
+ON clause_events(clause_id, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clause_tasks_unique_active_player
+ON clause_tasks(player_id)
+WHERE status IN ('PENDING', 'EXECUTING');
 `;

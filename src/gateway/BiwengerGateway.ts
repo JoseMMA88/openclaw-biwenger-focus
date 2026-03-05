@@ -14,6 +14,14 @@ export interface UserRoster {
   playerIds: number[];
 }
 
+export interface ClauseSnapshot {
+  playerId: number;
+  playerName: string | null;
+  clauseAmount: number | null;
+  ownerUserId: number | null;
+  raw: Record<string, unknown>;
+}
+
 export class BiwengerGateway {
   private readonly mcp: McpBiwengerClient;
   private readonly logger: Logger;
@@ -67,6 +75,70 @@ export class BiwengerGateway {
 
     if (payload.status !== 'bid_placed') {
       throw new Error('Unexpected MCP response while placing bid.');
+    }
+  }
+
+  async getPlayerClauseInfo(playerId: number, competition?: string): Promise<ClauseSnapshot> {
+    const payload = await this.mcp.callTool('biwenger_player_get_details', {
+      player_id: playerId,
+      competition
+    });
+
+    const data = asRecord(payload.data);
+    const player = asRecord(data.player);
+    const owner = asRecord(player.owner);
+    const clause = asRecord(player.clause);
+    const source = {
+      ...payload,
+      data,
+      player,
+      owner,
+      clause
+    };
+
+    const resolvedPlayerId = pickFirstPositiveInt(source, ['player.id', 'id']) ?? playerId;
+    const playerName = pickFirstString(source, ['player.name', 'player.shortName', 'name']);
+    const clauseAmount = pickFirstNumber(source, [
+      'player.clause',
+      'player.clauseValue',
+      'player.clause_amount',
+      'player.releaseClause',
+      'player.buyoutClause',
+      'player.clausePrice',
+      'clause.amount',
+      'clause.value',
+      'clause'
+    ]);
+    const ownerUserId = pickFirstPositiveInt(source, [
+      'player.owner.id',
+      'player.ownerID',
+      'player.owner_user_id',
+      'owner.id',
+      'owner.user_id',
+      'user.id',
+      'userID'
+    ]);
+
+    return {
+      playerId: resolvedPlayerId,
+      playerName,
+      clauseAmount,
+      ownerUserId,
+      raw: source
+    };
+  }
+
+  async payClause(playerId: number, ownerUserId: number, amount: number): Promise<void> {
+    const payload = await this.mcp.callTool('biwenger_offers_pay_clause', {
+      player_id: String(playerId),
+      owner_user_id: String(ownerUserId),
+      amount: String(amount),
+      auto_confirm: true
+    });
+
+    const status = pickFirstString(payload, ['status', 'result', 'message'])?.toLowerCase() ?? '';
+    if (status.includes('error')) {
+      throw new Error(`Unexpected MCP response while paying clause: ${status}`);
     }
   }
 

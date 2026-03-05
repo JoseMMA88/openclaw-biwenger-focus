@@ -10,6 +10,11 @@ Plugin de OpenClaw para gestionar focos automáticos de subasta en Biwenger con 
   - `biwenger_focus_list`
   - `biwenger_focus_update`
   - `biwenger_focus_cancel`
+  - `biwenger_clause_schedule_create`
+  - `biwenger_clause_schedule_status`
+  - `biwenger_clause_schedule_list`
+  - `biwenger_clause_schedule_update`
+  - `biwenger_clause_schedule_cancel`
 - Integración con `biwenger-mcp` local vía `stdio`.
 - Persistencia SQLite.
 - Worker de pujas en segundo plano con límite estricto y cooldown.
@@ -131,5 +136,57 @@ Input:
 ```json
 {
   "focus_id": "<uuid>"
+}
+```
+
+### `biwenger_clause_schedule_create`
+Input:
+
+```json
+{
+  "player_query": "Marc Casadó",
+  "max_clause_amount": 1150000,
+  "execute_at_iso": "2026-03-06T20:00:00+01:00"
+}
+```
+
+`execute_at` (epoch) también está soportado.
+
+### `biwenger_clause_schedule_status`
+Input:
+
+```json
+{
+  "clause_id": "<uuid>"
+}
+```
+
+### `biwenger_clause_schedule_list`
+Input:
+
+```json
+{
+  "status": "PENDING",
+  "limit": 50
+}
+```
+
+### `biwenger_clause_schedule_update`
+Input:
+
+```json
+{
+  "clause_id": "<uuid>",
+  "max_clause_amount": 1200000,
+  "execute_at_iso": "2026-03-06T21:30:00+01:00"
+}
+```
+
+### `biwenger_clause_schedule_cancel`
+Input:
+
+```json
+{
+  "clause_id": "<uuid>"
 }
 ```
