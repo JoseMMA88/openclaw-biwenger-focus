@@ -48,9 +48,14 @@ export class MarketReportService {
     return !this.repo.hasReportForDate(current.dateKey);
   }
 
-  async emitDailyReport(auctions: AuctionSnapshot[], atSec = nowSec()): Promise<MarketDailySummary | null> {
+  async emitDailyReport(
+    auctions: AuctionSnapshot[],
+    atSec = nowSec(),
+    options: { force?: boolean } = {}
+  ): Promise<MarketDailySummary | null> {
     const clock = this.getClock(atSec);
-    if (this.repo.hasReportForDate(clock.dateKey)) {
+    const force = options.force === true;
+    if (!force && this.repo.hasReportForDate(clock.dateKey)) {
       return null;
     }
 

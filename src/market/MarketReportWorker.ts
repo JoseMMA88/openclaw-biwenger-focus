@@ -60,10 +60,10 @@ export class MarketReportWorker {
     });
   }
 
-  async runReportNow(): Promise<boolean> {
+  async runReportNow(force = false): Promise<boolean> {
     const auctions = await this.gateway.getAuctions();
     this.service.observeAuctions(auctions);
-    const report = await this.service.emitDailyReport(auctions);
+    const report = await this.service.emitDailyReport(auctions, undefined, { force });
     return report !== null;
   }
 

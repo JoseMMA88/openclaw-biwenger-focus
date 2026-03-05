@@ -56,7 +56,7 @@ export class BiwengerGateway {
 
   async getAuctions(competitionCandidates: string[] = []): Promise<AuctionSnapshot[]> {
     const payload = await this.mcp.callTool('biwenger_market_get_auctions', {
-      include_player_details: false,
+      include_player_details: true,
       competition_candidates: competitionCandidates
     });
 
@@ -181,17 +181,36 @@ export class BiwengerGateway {
 
     const playerName = pickFirstString(
       { ...source, player: playerNode },
-      ['player.name', 'player.shortName', 'player.displayName', 'name']
+      [
+        'player.name',
+        'player.shortName',
+        'player.displayName',
+        'player.nickname',
+        'player.fullName',
+        'name',
+        'playerName'
+      ]
     );
 
     const currentPrice = pickFirstNumber(source, [
       'amount',
+      'price',
+      'current_price',
       'currentPrice',
+      'startingPrice',
+      'startPrice',
+      'initialPrice',
+      'initial_price',
+      'marketPrice',
+      'market_value',
       'bid.amount',
       'bidAmount',
+      'bid_amount',
       'offer.amount',
       'highestBid.amount',
-      'currentBid.amount'
+      'highest_bid.amount',
+      'currentBid.amount',
+      'current_bid.amount'
     ]);
 
     const untilRaw = pickFirstNumber(source, ['until', 'end', 'endAt', 'expiresAt']);

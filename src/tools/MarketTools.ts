@@ -77,21 +77,24 @@ export async function registerMarketTools(
     },
     {
       name: 'biwenger_market_report_now',
-      description: 'Lanza inmediatamente el informe diario de mercado (si no se envió hoy).',
+      description: 'Lanza inmediatamente el informe diario de mercado.',
       parameters: {
         type: 'object',
         properties: {
-          force: { type: 'boolean', description: 'No implementado: reservado para futuras versiones.' }
+          force: { type: 'boolean', description: 'Si true, reenvía aunque ya exista informe hoy.' }
         },
         additionalProperties: false
       },
-      execute: async () => {
+      execute: async (_id: string, raw: unknown) => {
         try {
-          const emitted = await worker.runReportNow();
+          const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
+          const force = args.force === true;
+          const emitted = await worker.runReportNow(force);
           const status = service.getStatus();
 
           return success({
             emitted,
+            force,
             now_date: status.nowDate,
             last_report_date: status.lastReportDate,
             last_report_at: status.lastReportAt
