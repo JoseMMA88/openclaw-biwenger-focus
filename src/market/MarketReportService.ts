@@ -162,10 +162,16 @@ export class MarketReportService {
       newTodayCount: newToday.length,
       newTodayTop: newToday.slice(0, this.topLimit).map((entry) => {
         const active = activeById.get(entry.playerId);
+        const currentPrice = active?.currentPrice ?? entry.lastSeenPrice;
+        const delta = entry.firstSeenPrice !== null && currentPrice !== null
+          ? currentPrice - entry.firstSeenPrice
+          : null;
         return {
           playerId: entry.playerId,
           playerName: entry.playerName,
-          price: active?.currentPrice ?? entry.lastSeenPrice,
+          firstSeenPrice: entry.firstSeenPrice,
+          price: currentPrice,
+          deltaFromFirstSeen: delta,
           until: active?.until ?? entry.lastUntil
         };
       }),
@@ -185,7 +191,15 @@ export class MarketReportService {
       lines.push('🆕 Nuevos destacados:');
       for (const entry of summary.newTodayTop.slice(0, 5)) {
         const price = entry.price === null ? 'N/D' : entry.price.toLocaleString('es-ES');
-        lines.push(`- ${entry.playerName} (${price})`);
+        const delta = entry.deltaFromFirstSeen;
+        const deltaText = delta === null
+          ? ''
+          : delta > 0
+            ? `, Δ +${delta.toLocaleString('es-ES')}`
+            : delta < 0
+              ? `, Δ -${Math.abs(delta).toLocaleString('es-ES')}`
+              : ', Δ 0';
+        lines.push(`- ${entry.playerName} (${price}${deltaText})`);
       }
     }
 

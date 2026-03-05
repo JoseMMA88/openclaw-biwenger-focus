@@ -18,7 +18,9 @@ export interface MarketDailySummary {
   newTodayTop: Array<{
     playerId: number;
     playerName: string;
+    firstSeenPrice: number | null;
     price: number | null;
+    deltaFromFirstSeen: number | null;
     until: number | null;
   }>;
   topRisers: Array<{
