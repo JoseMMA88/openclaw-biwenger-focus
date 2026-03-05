@@ -25,6 +25,7 @@ export class MarketRepository {
   upsertAuctions(auctions: AuctionSnapshot[], atSec = nowSec()): void {
     this.store.transaction(() => {
       for (const auction of auctions) {
+        const incomingName = this.normalizeName(auction.playerName, auction.playerId);
         const existing = this.store.get<MarketPlayerRow>(
           'SELECT * FROM market_players WHERE player_id = ?;',
           [auction.playerId]
@@ -38,7 +39,7 @@ export class MarketRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);`,
             [
               auction.playerId,
-              auction.playerName ?? `Player ${auction.playerId}`,
+              incomingName,
               atSec,
               auction.currentPrice,
               atSec,
@@ -53,13 +54,15 @@ export class MarketRepository {
         this.store.run(
           `UPDATE market_players
            SET player_name = ?,
+               first_seen_price = ?,
                last_seen_at = ?,
                last_seen_price = ?,
                last_until = ?,
                highest_bidder_user_id = ?
            WHERE player_id = ?;`,
           [
-            auction.playerName ?? existing.player_name,
+            this.pickBestName(incomingName, String(existing.player_name)),
+            existing.first_seen_price === null ? auction.currentPrice : existing.first_seen_price,
             atSec,
             auction.currentPrice,
             auction.until,
@@ -183,5 +186,24 @@ export class MarketRepository {
       highestBidderUserId: row.highest_bidder_user_id === null ? null : Number(row.highest_bidder_user_id),
       wasActiveAtLastReport: Number(row.was_active_at_last_report) === 1
     };
+  }
+
+  private pickBestName(incoming: string, current: string): string {
+    const incomingIsFallback = this.isFallbackName(incoming);
+    const currentIsFallback = this.isFallbackName(current);
+
+    if (!incomingIsFallback) return incoming;
+    if (!currentIsFallback) return current;
+    return incoming;
+  }
+
+  private normalizeName(name: string | null, playerId: number): string {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    if (trimmed.length === 0) return `Player ${playerId}`;
+    return trimmed;
+  }
+
+  private isFallbackName(name: string): boolean {
+    return /^Player\\s+\\d+$/i.test(name.trim());
   }
 }

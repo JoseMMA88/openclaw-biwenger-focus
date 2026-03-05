@@ -62,9 +62,29 @@ export class BiwengerGateway {
 
     const auctionsRaw = asArray(payload.auctions);
 
-    return auctionsRaw
+    const auctions = auctionsRaw
       .map((entry) => this.mapAuction(asRecord(entry)))
       .filter((entry): entry is AuctionSnapshot => entry !== null);
+
+    const unresolved = auctions.filter((entry) => this.isMissingPlayerName(entry.playerName));
+    if (unresolved.length > 0) {
+      const snapshotPayload = await this.mcp.callTool('biwenger_market_get_snapshot', {
+        include_auctions: true,
+        include_player_details: true,
+        include_raw: true,
+        competition_candidates: competitionCandidates
+      });
+
+      const playerNameIndex = this.collectPlayerNameIndex(snapshotPayload);
+      for (const auction of unresolved) {
+        const resolved = playerNameIndex.get(auction.playerId);
+        if (resolved && !this.isMissingPlayerName(resolved)) {
+          auction.playerName = resolved;
+        }
+      }
+    }
+
+    return auctions;
   }
 
   async placeBid(playerId: number, amount: number): Promise<void> {
@@ -270,5 +290,39 @@ export class BiwengerGateway {
     }
 
     return Math.floor(value);
+  }
+
+  private collectPlayerNameIndex(payload: Record<string, unknown>): Map<number, string> {
+    const index = new Map<number, string>();
+
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const entry of node) visit(entry);
+        return;
+      }
+
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+
+      const id = pickFirstPositiveInt(record, ['id', 'player_id', 'playerID', 'player.id']);
+      const name = pickFirstString(record, ['name', 'player_name', 'playerName', 'shortName', 'displayName']);
+      if (id && name && !this.isMissingPlayerName(name)) {
+        index.set(id, name);
+      }
+
+      for (const value of Object.values(record)) {
+        visit(value);
+      }
+    };
+
+    visit(payload);
+    return index;
+  }
+
+  private isMissingPlayerName(playerName: string | null): boolean {
+    if (!playerName) return true;
+    const normalized = playerName.trim();
+    if (normalized.length === 0) return true;
+    return /^Player\\s+\\d+$/i.test(normalized);
   }
 }
