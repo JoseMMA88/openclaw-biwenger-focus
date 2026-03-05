@@ -92,10 +92,8 @@ export class MarketReportWorker {
   }
 
   private async fetchMarketData(): Promise<{ auctions: AuctionSnapshot[]; daily: DailyMarketSnapshot[] }> {
-    const [auctions, daily] = await Promise.all([
-      this.gateway.getAuctions(),
-      this.gateway.getDailyMarket()
-    ]);
+    const auctions = await this.gateway.getAuctions();
+    const daily = await this.gateway.getDailyMarket([], auctions.map((entry) => entry.playerId));
 
     await Promise.all([
       this.hydrateNames(auctions),

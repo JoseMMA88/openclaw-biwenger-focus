@@ -88,7 +88,7 @@ export class BiwengerGateway {
     return auctions;
   }
 
-  async getDailyMarket(competitionCandidates: string[] = []): Promise<DailyMarketSnapshot[]> {
+  async getDailyMarket(competitionCandidates: string[] = [], excludePlayerIds: number[] = []): Promise<DailyMarketSnapshot[]> {
     const payload = await this.mcp.callTool('biwenger_market_get_snapshot', {
       include_auctions: true,
       include_player_details: true,
@@ -97,6 +97,7 @@ export class BiwengerGateway {
     });
 
     const arrays = this.extractDailyMarketArrays(payload);
+    const excluded = new Set<number>(excludePlayerIds);
     const seen = new Set<number>();
     const items: DailyMarketSnapshot[] = [];
 
@@ -104,6 +105,16 @@ export class BiwengerGateway {
       for (const entry of list) {
         const parsed = this.mapDailyMarketPlayer(asRecord(entry));
         if (!parsed) continue;
+        if (excluded.has(parsed.playerId)) continue;
+        if (seen.has(parsed.playerId)) continue;
+        seen.add(parsed.playerId);
+        items.push(parsed);
+      }
+    }
+
+    if (items.length === 0) {
+      const inferred = this.inferDailyMarketPlayers(payload, excluded);
+      for (const parsed of inferred) {
         if (seen.has(parsed.playerId)) continue;
         seen.add(parsed.playerId);
         items.push(parsed);
@@ -449,5 +460,44 @@ export class BiwengerGateway {
       previousPrice,
       raw: source
     };
+  }
+
+  private inferDailyMarketPlayers(
+    payload: Record<string, unknown>,
+    excluded: Set<number>
+  ): DailyMarketSnapshot[] {
+    const output = new Map<number, DailyMarketSnapshot>();
+
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const entry of node) visit(entry);
+        return;
+      }
+
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+      const parsed = this.mapDailyMarketPlayer(record);
+      if (parsed && !excluded.has(parsed.playerId)) {
+        const prev = output.get(parsed.playerId);
+        if (!prev || this.scoreDailySnapshot(parsed) > this.scoreDailySnapshot(prev)) {
+          output.set(parsed.playerId, parsed);
+        }
+      }
+
+      for (const value of Object.values(record)) {
+        visit(value);
+      }
+    };
+
+    visit(payload);
+    return Array.from(output.values());
+  }
+
+  private scoreDailySnapshot(item: DailyMarketSnapshot): number {
+    let score = 0;
+    if (item.currentPrice !== null) score += 2;
+    if (item.previousPrice !== null) score += 1;
+    if (!this.isMissingPlayerName(item.playerName)) score += 1;
+    return score;
   }
 }

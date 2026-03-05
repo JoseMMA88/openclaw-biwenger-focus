@@ -105,7 +105,7 @@ export class MarketRepository {
               incomingName,
               atSec,
               player.currentPrice,
-              null,
+              player.previousPrice,
               atSec,
               player.currentPrice
             ]
@@ -124,7 +124,7 @@ export class MarketRepository {
           [
             this.pickBestName(incomingName, String(existing.player_name)),
             existing.first_seen_price === null ? player.currentPrice : existing.first_seen_price,
-            existing.last_seen_price,
+            player.previousPrice ?? existing.last_seen_price,
             atSec,
             player.currentPrice,
             player.playerId

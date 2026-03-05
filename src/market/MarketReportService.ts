@@ -173,7 +173,7 @@ export class MarketReportService {
 
     const dailyTopRisers = dailySnapshots
       .map((player) => {
-        const fromPrice = player.firstSeenPrice;
+        const fromPrice = player.prevSeenPrice ?? player.firstSeenPrice;
         const toPrice = player.lastSeenPrice;
         if (fromPrice === null || toPrice === null) return null;
         const rise = toPrice - fromPrice;
@@ -217,7 +217,7 @@ export class MarketReportService {
           riseLastTick,
           riseLastTickPct,
           score,
-          reason: `Subida hoy ${riseToday.toLocaleString('es-ES')} (${riseTodayPct.toFixed(1)}%)`
+          reason: `Subida detectada ${riseToday.toLocaleString('es-ES')} (${riseTodayPct.toFixed(1)}%)`
         };
       })
       .sort((a, b) => b.score - a.score)
@@ -247,6 +247,7 @@ export class MarketReportService {
         topRisers: auctionTopRisers,
         endedSinceLastReport: this.repo
           .listEndedSinceLastReport(auctionIds, this.topLimit)
+          .filter((entry) => entry.lastSeenAt >= atSec - 21600)
           .map((entry) => ({
             playerId: entry.playerId,
             playerName: entry.playerName,
