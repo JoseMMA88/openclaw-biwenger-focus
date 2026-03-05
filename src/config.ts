@@ -18,6 +18,11 @@ export interface PluginConfig {
   maxConsecutiveErrors: number;
   biddingPollSec: number;
   armedMaxPollSec: number;
+  marketReportEnabled: boolean;
+  marketReportTickSec: number;
+  marketReportHour: number;
+  marketReportMinute: number;
+  marketReportTopLimit: number;
   defaults: {
     startWhenRemainingSec: number;
     bidStep: number;
@@ -35,6 +40,11 @@ export interface OpenClawRuntimeConfig {
   telegram_chat_id?: unknown;
   tz?: unknown;
   log_level?: unknown;
+  market_report_enabled?: unknown;
+  market_report_tick_sec?: unknown;
+  market_report_hour?: unknown;
+  market_report_minute?: unknown;
+  market_report_top_limit?: unknown;
 }
 
 function toStringValue(value: unknown): string | null {
@@ -47,6 +57,15 @@ function toPositiveInt(value: unknown, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+function toBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
 }
 
 function parseMcpArgs(value: unknown, fallback: string): string[] {
@@ -125,6 +144,11 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     maxConsecutiveErrors: toPositiveInt(env.FOCUS_MAX_CONSECUTIVE_ERRORS, 15),
     biddingPollSec: toPositiveInt(env.FOCUS_BIDDING_POLL_SEC, 900),
     armedMaxPollSec: toPositiveInt(env.FOCUS_ARMED_MAX_POLL_SEC, 900),
+    marketReportEnabled: toBoolean(rawConfig.market_report_enabled ?? env.MARKET_REPORT_ENABLED, true),
+    marketReportTickSec: toPositiveInt(rawConfig.market_report_tick_sec ?? env.MARKET_REPORT_TICK_SEC, 60),
+    marketReportHour: Math.max(0, Math.min(23, toPositiveInt(rawConfig.market_report_hour ?? env.MARKET_REPORT_HOUR, 9))),
+    marketReportMinute: Math.max(0, Math.min(59, toPositiveInt(rawConfig.market_report_minute ?? env.MARKET_REPORT_MINUTE, 0))),
+    marketReportTopLimit: toPositiveInt(rawConfig.market_report_top_limit ?? env.MARKET_REPORT_TOP_LIMIT, 10),
     defaults: {
       startWhenRemainingSec: 3600,
       bidStep: 50000,

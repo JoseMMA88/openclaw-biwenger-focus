@@ -5,11 +5,14 @@ import { ClauseWorker } from './clause/ClauseWorker.js';
 import { ClauseRepository } from './db/ClauseRepository.js';
 import { loadConfig, type OpenClawRuntimeConfig } from './config.js';
 import { FocusRepository } from './db/FocusRepository.js';
+import { MarketRepository } from './db/MarketRepository.js';
 import { SqliteStore } from './db/SqliteStore.js';
 import { FocusService } from './focus/FocusService.js';
 import { FocusWorker } from './focus/FocusWorker.js';
 import { BiwengerGateway } from './gateway/BiwengerGateway.js';
 import { Logger } from './logger.js';
+import { MarketReportService } from './market/MarketReportService.js';
+import { MarketReportWorker } from './market/MarketReportWorker.js';
 import { McpBiwengerClient } from './mcp/McpBiwengerClient.js';
 import { CompositeNotifier } from './notify/CompositeNotifier.js';
 import { LogNotifier } from './notify/LogNotifier.js';
@@ -17,6 +20,7 @@ import type { Notifier } from './notify/Notifier.js';
 import { TelegramNotifier } from './notify/TelegramNotifier.js';
 import { registerClauseTools } from './tools/ClauseTools.js';
 import { registerFocusTools } from './tools/FocusTools.js';
+import { registerMarketTools } from './tools/MarketTools.js';
 
 interface OpenClawApiLike {
   registerTool?: (tool: Record<string, unknown>) => void | Promise<void>;
@@ -37,9 +41,11 @@ class PluginRuntime {
   private readonly mcpClient: McpBiwengerClient;
   private readonly service: FocusService;
   private readonly clauseService: ClauseService;
+  private readonly marketService: MarketReportService;
   private readonly gateway: BiwengerGateway;
   private readonly worker: FocusWorker;
   private readonly clauseWorker: ClauseWorker;
+  private readonly marketWorker: MarketReportWorker;
 
   private constructor(api: OpenClawApiLike) {
     this.api = api;
@@ -51,6 +57,7 @@ class PluginRuntime {
     this.store = new SqliteStore(config.dbPath);
     const focusRepo = new FocusRepository(this.store);
     const clauseRepo = new ClauseRepository(this.store);
+    const marketRepo = new MarketRepository(this.store);
 
     this.mcpClient = new McpBiwengerClient({
       command: config.mcpCommand,
@@ -84,6 +91,15 @@ class PluginRuntime {
       notifier,
       logger: this.logger
     });
+    this.marketService = new MarketReportService({
+      repo: marketRepo,
+      notifier,
+      logger: this.logger,
+      tz: config.tz,
+      scheduleHour: config.marketReportHour,
+      scheduleMinute: config.marketReportMinute,
+      topLimit: config.marketReportTopLimit
+    });
 
     this.worker = new FocusWorker({
       service: this.service,
@@ -105,6 +121,13 @@ class PluginRuntime {
       tickSec: config.tickSec,
       maxConsecutiveErrors: config.maxConsecutiveErrors
     });
+    this.marketWorker = new MarketReportWorker({
+      service: this.marketService,
+      gateway: this.gateway,
+      logger: this.logger,
+      tickSec: config.marketReportTickSec,
+      enabled: config.marketReportEnabled
+    });
   }
 
   static async create(api: OpenClawApiLike): Promise<PluginRuntime> {
@@ -116,6 +139,7 @@ class PluginRuntime {
   async stop(): Promise<void> {
     this.worker.stop();
     this.clauseWorker.stop();
+    this.marketWorker.stop();
     await this.mcpClient.close();
     this.store.close();
   }
@@ -126,6 +150,7 @@ class PluginRuntime {
 
     await registerFocusTools(this.api, this.service, this.logger);
     await registerClauseTools(this.api, this.clauseService, this.logger);
+    await registerMarketTools(this.api, this.marketService, this.marketWorker, this.logger);
 
     if (this.api.registerService) {
       await this.api.registerService({
@@ -134,16 +159,19 @@ class PluginRuntime {
         start: async () => {
           this.worker.start();
           this.clauseWorker.start();
+          this.marketWorker.start();
         },
         stop: async () => {
           this.worker.stop();
           this.clauseWorker.stop();
+          this.marketWorker.stop();
         }
       });
     }
 
     this.worker.start();
     this.clauseWorker.start();
+    this.marketWorker.start();
 
     this.logger.info('Biwenger focus plugin loaded', {
       action: 'plugin_loaded'
@@ -168,7 +196,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.12'
+  version: '0.1.13'
 };
 
 function reportStartupError(error: unknown): void {

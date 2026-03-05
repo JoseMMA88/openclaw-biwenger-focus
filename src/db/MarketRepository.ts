@@ -1,0 +1,187 @@
+import type { AuctionSnapshot } from '../domain/focus.js';
+import type { MarketPlayerSnapshot } from '../domain/market.js';
+import { nowSec } from '../utils/time.js';
+import { SqliteStore } from './SqliteStore.js';
+
+interface MarketPlayerRow extends Record<string, unknown> {
+  player_id: number;
+  player_name: string;
+  first_seen_at: number;
+  first_seen_price: number | null;
+  last_seen_at: number;
+  last_seen_price: number | null;
+  last_until: number | null;
+  highest_bidder_user_id: number | null;
+  was_active_at_last_report: number;
+}
+
+export class MarketRepository {
+  private readonly store: SqliteStore;
+
+  constructor(store: SqliteStore) {
+    this.store = store;
+  }
+
+  upsertAuctions(auctions: AuctionSnapshot[], atSec = nowSec()): void {
+    this.store.transaction(() => {
+      for (const auction of auctions) {
+        const existing = this.store.get<MarketPlayerRow>(
+          'SELECT * FROM market_players WHERE player_id = ?;',
+          [auction.playerId]
+        );
+
+        if (!existing) {
+          this.store.run(
+            `INSERT INTO market_players (
+              player_id, player_name, first_seen_at, first_seen_price,
+              last_seen_at, last_seen_price, last_until, highest_bidder_user_id, was_active_at_last_report
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);`,
+            [
+              auction.playerId,
+              auction.playerName ?? `Player ${auction.playerId}`,
+              atSec,
+              auction.currentPrice,
+              atSec,
+              auction.currentPrice,
+              auction.until,
+              auction.highestBidderUserId
+            ]
+          );
+          continue;
+        }
+
+        this.store.run(
+          `UPDATE market_players
+           SET player_name = ?,
+               last_seen_at = ?,
+               last_seen_price = ?,
+               last_until = ?,
+               highest_bidder_user_id = ?
+           WHERE player_id = ?;`,
+          [
+            auction.playerName ?? existing.player_name,
+            atSec,
+            auction.currentPrice,
+            auction.until,
+            auction.highestBidderUserId,
+            auction.playerId
+          ]
+        );
+      }
+    });
+  }
+
+  hasReportForDate(reportDate: string): boolean {
+    const row = this.store.get<{ report_date: string }>(
+      'SELECT report_date FROM market_reports WHERE report_date = ? LIMIT 1;',
+      [reportDate]
+    );
+    return row !== null;
+  }
+
+  recordReport(reportDate: string, payloadJson: string, activePlayerIds: number[], atSec = nowSec()): void {
+    this.store.transaction(() => {
+      this.store.run(
+        `INSERT INTO market_reports (report_date, created_at, payload_json)
+         VALUES (?, ?, ?)
+         ON CONFLICT(report_date) DO UPDATE SET
+           created_at = excluded.created_at,
+           payload_json = excluded.payload_json;`,
+        [reportDate, atSec, payloadJson]
+      );
+
+      this.store.run('UPDATE market_players SET was_active_at_last_report = 0;');
+
+      if (activePlayerIds.length > 0) {
+        const placeholders = activePlayerIds.map(() => '?').join(',');
+        this.store.run(
+          `UPDATE market_players
+           SET was_active_at_last_report = 1
+           WHERE player_id IN (${placeholders});`,
+          activePlayerIds
+        );
+      }
+    });
+  }
+
+  getPlayersByIds(playerIds: number[]): MarketPlayerSnapshot[] {
+    if (playerIds.length === 0) return [];
+
+    const placeholders = playerIds.map(() => '?').join(',');
+    return this.store
+      .all<MarketPlayerRow>(
+        `SELECT * FROM market_players
+         WHERE player_id IN (${placeholders});`,
+        playerIds
+      )
+      .map((row) => this.mapPlayer(row));
+  }
+
+  listPlayersSeenSince(minFirstSeenAt: number): MarketPlayerSnapshot[] {
+    return this.store
+      .all<MarketPlayerRow>(
+        `SELECT * FROM market_players
+         WHERE first_seen_at >= ?
+         ORDER BY first_seen_at DESC
+         LIMIT 1000;`,
+        [minFirstSeenAt]
+      )
+      .map((row) => this.mapPlayer(row));
+  }
+
+  listEndedSinceLastReport(activePlayerIds: number[], limit = 20): MarketPlayerSnapshot[] {
+    const safeLimit = Math.max(1, Math.min(limit, 200));
+    if (activePlayerIds.length === 0) {
+      return this.store
+        .all<MarketPlayerRow>(
+          `SELECT * FROM market_players
+           WHERE was_active_at_last_report = 1
+           ORDER BY last_seen_at DESC
+           LIMIT ?;`,
+          [safeLimit]
+        )
+        .map((row) => this.mapPlayer(row));
+    }
+
+    const placeholders = activePlayerIds.map(() => '?').join(',');
+    return this.store
+      .all<MarketPlayerRow>(
+        `SELECT * FROM market_players
+         WHERE was_active_at_last_report = 1
+           AND player_id NOT IN (${placeholders})
+         ORDER BY last_seen_at DESC
+         LIMIT ?;`,
+        [...activePlayerIds, safeLimit]
+      )
+      .map((row) => this.mapPlayer(row));
+  }
+
+  getLastReport(): { reportDate: string; createdAt: number } | null {
+    const row = this.store.get<{ report_date: string; created_at: number }>(
+      `SELECT report_date, created_at
+       FROM market_reports
+       ORDER BY created_at DESC
+       LIMIT 1;`
+    );
+
+    if (!row) return null;
+    return {
+      reportDate: String(row.report_date),
+      createdAt: Number(row.created_at)
+    };
+  }
+
+  private mapPlayer(row: MarketPlayerRow): MarketPlayerSnapshot {
+    return {
+      playerId: Number(row.player_id),
+      playerName: String(row.player_name),
+      firstSeenAt: Number(row.first_seen_at),
+      firstSeenPrice: row.first_seen_price === null ? null : Number(row.first_seen_price),
+      lastSeenAt: Number(row.last_seen_at),
+      lastSeenPrice: row.last_seen_price === null ? null : Number(row.last_seen_price),
+      lastUntil: row.last_until === null ? null : Number(row.last_until),
+      highestBidderUserId: row.highest_bidder_user_id === null ? null : Number(row.highest_bidder_user_id),
+      wasActiveAtLastReport: Number(row.was_active_at_last_report) === 1
+    };
+  }
+}

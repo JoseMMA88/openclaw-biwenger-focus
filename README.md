@@ -15,6 +15,8 @@ Plugin de OpenClaw para gestionar focos automáticos de subasta en Biwenger con 
   - `biwenger_clause_schedule_list`
   - `biwenger_clause_schedule_update`
   - `biwenger_clause_schedule_cancel`
+  - `biwenger_market_report_status`
+  - `biwenger_market_report_now`
 - Integración con `biwenger-mcp` local vía `stdio`.
 - Persistencia SQLite.
 - Worker de pujas en segundo plano con límite estricto y cooldown.
@@ -48,6 +50,11 @@ Copia `.env.example` a `.env` y ajusta:
 - `FOCUS_BIDDING_POLL_SEC=900` (15 min en estado `BIDDING`)
 - `FOCUS_ARMED_MAX_POLL_SEC=900` (tope de polling en `ARMED`)
 - En `ARMED`, el siguiente ciclo se programa para despertar cerca de la ventana de 1h, sin superar el tope configurado.
+- `MARKET_REPORT_ENABLED=true` (activar informe diario de mercado)
+- `MARKET_REPORT_HOUR=9` (hora local del informe diario)
+- `MARKET_REPORT_MINUTE=0` (minuto local del informe diario)
+- `MARKET_REPORT_TICK_SEC=60` (frecuencia de observación del mercado)
+- `MARKET_REPORT_TOP_LIMIT=10` (máximo de jugadores por bloque del informe)
 - Credenciales Biwenger para el MCP:
   - `BIWENGER_TOKEN` **o** `BIWENGER_EMAIL` + `BIWENGER_PASSWORD`
   - `BIWENGER_LEAGUE_ID`
@@ -189,4 +196,18 @@ Input:
 {
   "clause_id": "<uuid>"
 }
+```
+
+### `biwenger_market_report_status`
+Input:
+
+```json
+{}
+```
+
+### `biwenger_market_report_now`
+Input:
+
+```json
+{}
 ```

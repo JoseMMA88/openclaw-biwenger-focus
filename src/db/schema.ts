@@ -110,4 +110,28 @@ ON clause_events(clause_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clause_tasks_unique_active_player
 ON clause_tasks(player_id)
 WHERE status IN ('PENDING', 'EXECUTING');
+
+CREATE TABLE IF NOT EXISTS market_players (
+  player_id INTEGER PRIMARY KEY,
+  player_name TEXT NOT NULL,
+  first_seen_at INTEGER NOT NULL,
+  first_seen_price INTEGER,
+  last_seen_at INTEGER NOT NULL,
+  last_seen_price INTEGER,
+  last_until INTEGER,
+  highest_bidder_user_id INTEGER,
+  was_active_at_last_report INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS market_reports (
+  report_date TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  payload_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_players_first_seen_at
+ON market_players(first_seen_at);
+
+CREATE INDEX IF NOT EXISTS idx_market_players_last_seen_at
+ON market_players(last_seen_at);
 `;
