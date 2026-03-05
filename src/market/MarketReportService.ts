@@ -1,5 +1,5 @@
 import type { AuctionSnapshot } from '../domain/focus.js';
-import type { MarketDailySummary } from '../domain/market.js';
+import type { DailyMarketSnapshot, MarketDailySummary } from '../domain/market.js';
 import { Logger } from '../logger.js';
 import type { Notifier } from '../notify/Notifier.js';
 import { nowSec } from '../utils/time.js';
@@ -32,8 +32,9 @@ export class MarketReportService {
     this.topLimit = options.topLimit;
   }
 
-  observeAuctions(auctions: AuctionSnapshot[], atSec = nowSec()): void {
-    this.repo.upsertAuctions(auctions, atSec);
+  observeMarket(input: { auctions: AuctionSnapshot[]; daily: DailyMarketSnapshot[] }, atSec = nowSec()): void {
+    this.repo.upsertAuctions(input.auctions, atSec);
+    this.repo.upsertDailyMarket(input.daily, atSec);
   }
 
   isDailyReportDue(atSec = nowSec()): boolean {
@@ -49,7 +50,7 @@ export class MarketReportService {
   }
 
   async emitDailyReport(
-    auctions: AuctionSnapshot[],
+    input: { auctions: AuctionSnapshot[]; daily: DailyMarketSnapshot[] },
     atSec = nowSec(),
     options: { force?: boolean } = {}
   ): Promise<MarketDailySummary | null> {
@@ -59,13 +60,14 @@ export class MarketReportService {
       return null;
     }
 
-    const summary = this.buildSummary(auctions, atSec, clock.dateKey);
+    const summary = this.buildSummary(input, atSec, clock.dateKey);
     const text = this.renderSummary(summary);
 
     this.repo.recordReport(
       clock.dateKey,
       JSON.stringify(summary),
-      auctions.map((entry) => entry.playerId),
+      input.auctions.map((entry) => entry.playerId),
+      input.daily.map((entry) => entry.playerId),
       atSec
     );
 
@@ -75,18 +77,20 @@ export class MarketReportService {
       text,
       payload: {
         report_date: summary.reportDate,
-        active_count: summary.activeCount,
-        new_today_count: summary.newTodayCount,
-        ended_since_last_report_count: summary.endedSinceLastReport.length
+        daily_active_count: summary.daily.activeCount,
+        daily_recommended_count: summary.daily.recommended.length,
+        auctions_active_count: summary.auctions.activeCount,
+        auctions_risers_count: summary.auctions.topRisers.length
       }
     });
 
     this.logger.info('Market daily report emitted', {
       action: 'market_daily_report_emitted',
       report_date: summary.reportDate,
-      active_count: summary.activeCount,
-      new_today_count: summary.newTodayCount,
-      ended_since_last_report_count: summary.endedSinceLastReport.length
+      daily_active_count: summary.daily.activeCount,
+      daily_recommended_count: summary.daily.recommended.length,
+      auctions_active_count: summary.auctions.activeCount,
+      auctions_risers_count: summary.auctions.topRisers.length
     });
 
     return summary;
@@ -113,21 +117,42 @@ export class MarketReportService {
     };
   }
 
-  private buildSummary(auctions: AuctionSnapshot[], atSec: number, reportDate: string): MarketDailySummary {
-    const activeById = new Map<number, AuctionSnapshot>();
+  private buildSummary(
+    input: { auctions: AuctionSnapshot[]; daily: DailyMarketSnapshot[] },
+    atSec: number,
+    reportDate: string
+  ): MarketDailySummary {
+    const auctions = input.auctions;
+    const daily = input.daily;
+
+    const auctionById = new Map<number, AuctionSnapshot>();
     for (const auction of auctions) {
-      activeById.set(auction.playerId, auction);
+      auctionById.set(auction.playerId, auction);
     }
 
-    const activeIds = auctions.map((entry) => entry.playerId);
-    const activeSnapshots = this.repo.getPlayersByIds(activeIds);
-    const recentSnapshots = this.repo.listPlayersSeenSince(atSec - 172800);
+    const dailyById = new Map<number, DailyMarketSnapshot>();
+    for (const player of daily) {
+      dailyById.set(player.playerId, player);
+    }
 
-    const newToday = recentSnapshots
+    const auctionIds = auctions.map((entry) => entry.playerId);
+    const dailyIds = daily.map((entry) => entry.playerId);
+
+    const auctionSnapshots = this.repo.getPlayersByIds(auctionIds);
+    const dailySnapshots = this.repo.getDailyPlayersByIds(dailyIds);
+
+    const recentAuctionSnapshots = this.repo.listPlayersSeenSince(atSec - 172800);
+    const recentDailySnapshots = this.repo.listDailyPlayersSeenSince(atSec - 172800);
+
+    const auctionNewToday = recentAuctionSnapshots
       .filter((player) => this.getDateKeyFromEpoch(player.firstSeenAt) === reportDate)
       .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
 
-    const topRisers = activeSnapshots
+    const dailyNewToday = recentDailySnapshots
+      .filter((player) => this.getDateKeyFromEpoch(player.firstSeenAt) === reportDate)
+      .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+
+    const auctionTopRisers = auctionSnapshots
       .map((player) => {
         const fromPrice = player.firstSeenPrice;
         const toPrice = player.lastSeenPrice;
@@ -146,50 +171,123 @@ export class MarketReportService {
       .sort((a, b) => b.rise - a.rise)
       .slice(0, this.topLimit);
 
-    const ended = this.repo
-      .listEndedSinceLastReport(activeIds, this.topLimit)
-      .map((entry) => ({
-        playerId: entry.playerId,
-        playerName: entry.playerName,
-        lastSeenPrice: entry.lastSeenPrice,
-        lastSeenAt: entry.lastSeenAt
-      }));
+    const dailyTopRisers = dailySnapshots
+      .map((player) => {
+        const fromPrice = player.firstSeenPrice;
+        const toPrice = player.lastSeenPrice;
+        if (fromPrice === null || toPrice === null) return null;
+        const rise = toPrice - fromPrice;
+        if (rise <= 0) return null;
+        const risePct = fromPrice > 0 ? (rise / fromPrice) * 100 : 0;
+        const lastDelta = player.prevSeenPrice !== null ? toPrice - player.prevSeenPrice : null;
+
+        return {
+          playerId: player.playerId,
+          playerName: player.playerName,
+          fromPrice,
+          toPrice,
+          rise,
+          risePct,
+          lastDelta
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      .sort((a, b) => b.risePct - a.risePct)
+      .slice(0, this.topLimit);
+
+    const recommended = dailyTopRisers
+      .map((entry) => {
+        const price = entry.toPrice;
+        const riseToday = entry.rise;
+        const riseTodayPct = entry.risePct;
+        const riseLastTick = entry.lastDelta;
+        const riseLastTickPct = riseLastTick !== null && entry.fromPrice > 0
+          ? (riseLastTick / entry.fromPrice) * 100
+          : null;
+
+        const scoreRaw = (riseTodayPct * 0.7) + ((riseLastTickPct ?? 0) * 0.3);
+        const score = Math.round(Math.max(0, Math.min(100, scoreRaw * 10)));
+
+        return {
+          playerId: entry.playerId,
+          playerName: entry.playerName,
+          price,
+          riseToday,
+          riseTodayPct,
+          riseLastTick,
+          riseLastTickPct,
+          score,
+          reason: `Subida hoy ${riseToday.toLocaleString('es-ES')} (${riseTodayPct.toFixed(1)}%)`
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
 
     return {
       reportDate,
       nowSec: atSec,
-      activeCount: auctions.length,
-      newTodayCount: newToday.length,
-      newTodayTop: newToday.slice(0, this.topLimit).map((entry) => {
-        const active = activeById.get(entry.playerId);
-        const currentPrice = active?.currentPrice ?? entry.lastSeenPrice;
-        const delta = entry.firstSeenPrice !== null && currentPrice !== null
-          ? currentPrice - entry.firstSeenPrice
-          : null;
-        return {
-          playerId: entry.playerId,
-          playerName: entry.playerName,
-          firstSeenPrice: entry.firstSeenPrice,
-          price: currentPrice,
-          deltaFromFirstSeen: delta,
-          until: active?.until ?? entry.lastUntil
-        };
-      }),
-      topRisers,
-      endedSinceLastReport: ended
+      auctions: {
+        activeCount: auctions.length,
+        newTodayCount: auctionNewToday.length,
+        newTodayTop: auctionNewToday.slice(0, this.topLimit).map((entry) => {
+          const active = auctionById.get(entry.playerId);
+          const currentPrice = active?.currentPrice ?? entry.lastSeenPrice;
+          const delta = entry.firstSeenPrice !== null && currentPrice !== null
+            ? currentPrice - entry.firstSeenPrice
+            : null;
+          return {
+            playerId: entry.playerId,
+            playerName: entry.playerName,
+            firstSeenPrice: entry.firstSeenPrice,
+            price: currentPrice,
+            deltaFromFirstSeen: delta,
+            until: active?.until ?? entry.lastUntil
+          };
+        }),
+        topRisers: auctionTopRisers,
+        endedSinceLastReport: this.repo
+          .listEndedSinceLastReport(auctionIds, this.topLimit)
+          .map((entry) => ({
+            playerId: entry.playerId,
+            playerName: entry.playerName,
+            lastSeenPrice: entry.lastSeenPrice,
+            lastSeenAt: entry.lastSeenAt
+          }))
+      },
+      daily: {
+        activeCount: daily.length,
+        newTodayCount: dailyNewToday.length,
+        newTodayTop: dailyNewToday.slice(0, this.topLimit).map((entry) => {
+          const active = dailyById.get(entry.playerId);
+          const currentPrice = active?.currentPrice ?? entry.lastSeenPrice;
+          const delta = entry.firstSeenPrice !== null && currentPrice !== null
+            ? currentPrice - entry.firstSeenPrice
+            : null;
+
+          return {
+            playerId: entry.playerId,
+            playerName: entry.playerName,
+            firstSeenPrice: entry.firstSeenPrice,
+            price: currentPrice,
+            deltaFromFirstSeen: delta
+          };
+        }),
+        topRisers: dailyTopRisers,
+        recommended
+      }
     };
   }
 
   private renderSummary(summary: MarketDailySummary): string {
     const lines: string[] = [];
     lines.push(`📊 Informe diario mercado (${summary.reportDate})`);
-    lines.push(`• Activos ahora: ${summary.activeCount}`);
-    lines.push(`• Nuevos hoy: ${summary.newTodayCount}`);
 
-    if (summary.newTodayTop.length > 0) {
-      lines.push('');
-      lines.push('🆕 Nuevos destacados:');
-      for (const entry of summary.newTodayTop.slice(0, 5)) {
+    lines.push('');
+    lines.push(`🛒 Mercado diario: ${summary.daily.activeCount} activos | ${summary.daily.newTodayCount} nuevos hoy`);
+
+    if (summary.daily.newTodayTop.length > 0) {
+      lines.push('🆕 Nuevos mercado diario:');
+      for (const entry of summary.daily.newTodayTop.slice(0, 5)) {
         const price = entry.price === null ? 'N/D' : entry.price.toLocaleString('es-ES');
         const delta = entry.deltaFromFirstSeen;
         const deltaText = delta === null
@@ -203,20 +301,46 @@ export class MarketReportService {
       }
     }
 
-    if (summary.topRisers.length > 0) {
-      lines.push('');
-      lines.push('📈 Top subidas (desde que aparecieron):');
-      for (const entry of summary.topRisers.slice(0, 5)) {
+    if (summary.daily.topRisers.length > 0) {
+      lines.push('📈 Más calientes (mercado diario):');
+      for (const entry of summary.daily.topRisers.slice(0, 5)) {
+        const lastTickText = entry.lastDelta === null
+          ? ''
+          : entry.lastDelta > 0
+            ? ` | última +${entry.lastDelta.toLocaleString('es-ES')}`
+            : entry.lastDelta < 0
+              ? ` | última -${Math.abs(entry.lastDelta).toLocaleString('es-ES')}`
+              : ' | última 0';
+        lines.push(
+          `- ${entry.playerName}: +${entry.rise.toLocaleString('es-ES')} (${entry.risePct.toFixed(1)}%)${lastTickText}`
+        );
+      }
+    }
+
+    if (summary.daily.recommended.length > 0) {
+      lines.push('🤖 Recomendados (criterio: subida % hoy + momento última lectura):');
+      for (const entry of summary.daily.recommended) {
+        lines.push(
+          `- ${entry.playerName} | score ${entry.score}/100 | ${entry.price.toLocaleString('es-ES')} | ${entry.reason}`
+        );
+      }
+    }
+
+    lines.push('');
+    lines.push(`🎯 Subastas/Pujas: ${summary.auctions.activeCount} activas | ${summary.auctions.newTodayCount} nuevas hoy`);
+
+    if (summary.auctions.topRisers.length > 0) {
+      lines.push('💸 Top subidas en pujas:');
+      for (const entry of summary.auctions.topRisers.slice(0, 5)) {
         lines.push(
           `- ${entry.playerName}: +${entry.rise.toLocaleString('es-ES')} (${entry.fromPrice.toLocaleString('es-ES')} → ${entry.toPrice.toLocaleString('es-ES')})`
         );
       }
     }
 
-    if (summary.endedSinceLastReport.length > 0) {
-      lines.push('');
-      lines.push('🏁 Salieron desde el último informe:');
-      for (const entry of summary.endedSinceLastReport.slice(0, 5)) {
+    if (summary.auctions.endedSinceLastReport.length > 0) {
+      lines.push('🏁 Salieron de subasta desde el último informe:');
+      for (const entry of summary.auctions.endedSinceLastReport.slice(0, 5)) {
         const price = entry.lastSeenPrice === null ? 'N/D' : entry.lastSeenPrice.toLocaleString('es-ES');
         lines.push(`- ${entry.playerName} (último precio: ${price})`);
       }

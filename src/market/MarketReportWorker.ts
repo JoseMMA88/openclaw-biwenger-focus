@@ -1,7 +1,8 @@
+import type { AuctionSnapshot } from '../domain/focus.js';
+import type { DailyMarketSnapshot } from '../domain/market.js';
 import { BiwengerGateway } from '../gateway/BiwengerGateway.js';
 import { Logger } from '../logger.js';
 import { MarketReportService } from './MarketReportService.js';
-import type { AuctionSnapshot } from '../domain/focus.js';
 
 interface MarketReportWorkerOptions {
   service: MarketReportService;
@@ -63,10 +64,9 @@ export class MarketReportWorker {
   }
 
   async runReportNow(force = false): Promise<boolean> {
-    const auctions = await this.gateway.getAuctions();
-    await this.hydrateAuctionNames(auctions);
-    this.service.observeAuctions(auctions);
-    const report = await this.service.emitDailyReport(auctions, undefined, { force });
+    const data = await this.fetchMarketData();
+    this.service.observeMarket(data);
+    const report = await this.service.emitDailyReport(data, undefined, { force });
     return report !== null;
   }
 
@@ -75,12 +75,11 @@ export class MarketReportWorker {
     this.runningTick = true;
 
     try {
-      const auctions = await this.gateway.getAuctions();
-      await this.hydrateAuctionNames(auctions);
-      this.service.observeAuctions(auctions);
+      const data = await this.fetchMarketData();
+      this.service.observeMarket(data);
 
       if (this.service.isDailyReportDue()) {
-        await this.service.emitDailyReport(auctions);
+        await this.service.emitDailyReport(data);
       }
     } catch (error) {
       this.logger.warn('Market report tick failed', {
@@ -92,8 +91,22 @@ export class MarketReportWorker {
     }
   }
 
-  private async hydrateAuctionNames(auctions: AuctionSnapshot[]): Promise<void> {
-    const missing = auctions.filter((entry) => this.isMissingPlayerName(entry.playerName));
+  private async fetchMarketData(): Promise<{ auctions: AuctionSnapshot[]; daily: DailyMarketSnapshot[] }> {
+    const [auctions, daily] = await Promise.all([
+      this.gateway.getAuctions(),
+      this.gateway.getDailyMarket()
+    ]);
+
+    await Promise.all([
+      this.hydrateNames(auctions),
+      this.hydrateNames(daily)
+    ]);
+
+    return { auctions, daily };
+  }
+
+  private async hydrateNames(entries: Array<{ playerId: number; playerName: string | null }>): Promise<void> {
+    const missing = entries.filter((entry) => this.isMissingPlayerName(entry.playerName));
     if (missing.length === 0) return;
 
     await Promise.all(
@@ -125,6 +138,6 @@ export class MarketReportWorker {
     if (!playerName) return true;
     const normalized = playerName.trim();
     if (normalized.length === 0) return true;
-    return /^Player\\s+\\d+$/i.test(normalized);
+    return /^Player\s+\d+$/i.test(normalized);
   }
 }

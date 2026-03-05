@@ -20,6 +20,9 @@ Plugin de OpenClaw para gestionar focos automáticos de subasta en Biwenger con 
 - Integración con `biwenger-mcp` local vía `stdio`.
 - Persistencia SQLite.
 - Worker de pujas en segundo plano con límite estricto y cooldown.
+- Informe diario con dos bloques separados:
+  - Mercado diario (altas, subidas y recomendados por momentum de precio).
+  - Subastas/pujas (actividad y subidas en subasta).
 - Notificaciones por Telegram + logs JSON.
 
 ## Requisitos
@@ -213,3 +216,13 @@ Input:
   "force": true
 }
 ```
+
+### Criterio del informe diario
+
+- `Mercado diario`:
+  - `Nuevos mercado diario`: jugadores recién detectados hoy en el mercado diario.
+  - `Más calientes`: mayor subida porcentual desde primera observación del día.
+  - `Recomendados`: score 0-100 basado en `subida % hoy` (70%) + `momentum de última lectura` (30%).
+- `Subastas/Pujas`:
+  - Subidas reales de precio en subastas activas.
+  - Jugadores que salieron de subasta desde el último informe.

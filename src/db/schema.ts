@@ -129,9 +129,26 @@ CREATE TABLE IF NOT EXISTS market_reports (
   payload_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS market_daily_players (
+  player_id INTEGER PRIMARY KEY,
+  player_name TEXT NOT NULL,
+  first_seen_at INTEGER NOT NULL,
+  first_seen_price INTEGER,
+  prev_seen_price INTEGER,
+  last_seen_at INTEGER NOT NULL,
+  last_seen_price INTEGER,
+  was_active_at_last_report INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_market_players_first_seen_at
 ON market_players(first_seen_at);
 
 CREATE INDEX IF NOT EXISTS idx_market_players_last_seen_at
 ON market_players(last_seen_at);
+
+CREATE INDEX IF NOT EXISTS idx_market_daily_players_first_seen_at
+ON market_daily_players(first_seen_at);
+
+CREATE INDEX IF NOT EXISTS idx_market_daily_players_last_seen_at
+ON market_daily_players(last_seen_at);
 `;

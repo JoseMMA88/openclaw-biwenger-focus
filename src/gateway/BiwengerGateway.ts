@@ -1,7 +1,8 @@
 import type { AuctionSnapshot } from '../domain/focus.js';
+import type { DailyMarketSnapshot } from '../domain/market.js';
 import { Logger } from '../logger.js';
 import { McpBiwengerClient } from '../mcp/McpBiwengerClient.js';
-import { asArray, asRecord, pickFirstNumber, pickFirstPositiveInt, pickFirstString } from '../utils/types.js';
+import { asArray, asRecord, getByPath, pickFirstNumber, pickFirstPositiveInt, pickFirstString } from '../utils/types.js';
 
 export interface PlayerMatch {
   id: number;
@@ -85,6 +86,31 @@ export class BiwengerGateway {
     }
 
     return auctions;
+  }
+
+  async getDailyMarket(competitionCandidates: string[] = []): Promise<DailyMarketSnapshot[]> {
+    const payload = await this.mcp.callTool('biwenger_market_get_snapshot', {
+      include_auctions: true,
+      include_player_details: true,
+      include_raw: true,
+      competition_candidates: competitionCandidates
+    });
+
+    const arrays = this.extractDailyMarketArrays(payload);
+    const seen = new Set<number>();
+    const items: DailyMarketSnapshot[] = [];
+
+    for (const list of arrays) {
+      for (const entry of list) {
+        const parsed = this.mapDailyMarketPlayer(asRecord(entry));
+        if (!parsed) continue;
+        if (seen.has(parsed.playerId)) continue;
+        seen.add(parsed.playerId);
+        items.push(parsed);
+      }
+    }
+
+    return items;
   }
 
   async placeBid(playerId: number, amount: number): Promise<void> {
@@ -324,5 +350,90 @@ export class BiwengerGateway {
     const normalized = playerName.trim();
     if (normalized.length === 0) return true;
     return /^Player\\s+\\d+$/i.test(normalized);
+  }
+
+  private extractDailyMarketArrays(payload: Record<string, unknown>): Array<Array<Record<string, unknown>>> {
+    const paths = [
+      'market',
+      'players',
+      'marketPlayers',
+      'data.market',
+      'data.players',
+      'raw.market',
+      'raw.players',
+      'raw.data.market',
+      'raw.data.players',
+      'snapshot.market',
+      'snapshot.players'
+    ];
+
+    const arrays: Array<Array<Record<string, unknown>>> = [];
+    for (const path of paths) {
+      const node = getByPath(payload, path);
+      const list = asArray(node).map((entry) => asRecord(entry)).filter((entry) => Object.keys(entry).length > 0);
+      if (list.length > 0) arrays.push(list);
+    }
+
+    return arrays;
+  }
+
+  private mapDailyMarketPlayer(source: Record<string, unknown>): DailyMarketSnapshot | null {
+    const playerNode = asRecord(source.player);
+
+    const playerId = pickFirstPositiveInt(
+      { ...source, player: playerNode },
+      ['player.id', 'playerID', 'player_id', 'requestedPlayers.0', 'id']
+    );
+    if (!playerId) return null;
+
+    // Exclude auction-like entries from daily market stream.
+    const maybeUntil = pickFirstNumber(source, ['until', 'end', 'endAt', 'expiresAt']);
+    if (maybeUntil !== null && maybeUntil > 0) return null;
+
+    const playerName = pickFirstString(
+      { ...source, player: playerNode },
+      [
+        'player.name',
+        'player.shortName',
+        'player.displayName',
+        'player.nickname',
+        'player.fullName',
+        'playerName',
+        'player_name',
+        'name'
+      ]
+    ) ?? `Player ${playerId}`;
+
+    const currentPrice = pickFirstNumber(source, [
+      'price',
+      'amount',
+      'value',
+      'currentPrice',
+      'current_price',
+      'startingPrice',
+      'startPrice',
+      'initialPrice',
+      'initial_price',
+      'marketPrice',
+      'market_value'
+    ]);
+
+    const previousPrice = pickFirstNumber(source, [
+      'previousPrice',
+      'prevPrice',
+      'lastPrice',
+      'last_price',
+      'oldPrice',
+      'old_price',
+      'priceBefore'
+    ]);
+
+    return {
+      playerId,
+      playerName,
+      currentPrice,
+      previousPrice,
+      raw: source
+    };
   }
 }

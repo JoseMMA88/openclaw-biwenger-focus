@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { MarketRepository } from '../../src/db/MarketRepository.js';
 import { SqliteStore } from '../../src/db/SqliteStore.js';
 import type { AuctionSnapshot } from '../../src/domain/focus.js';
+import type { DailyMarketSnapshot } from '../../src/domain/market.js';
 import { Logger } from '../../src/logger.js';
 import { MarketReportService } from '../../src/market/MarketReportService.js';
 import type { FocusNotification, Notifier } from '../../src/notify/Notifier.js';
@@ -59,12 +60,31 @@ describe('MarketReportService integration', () => {
       }
     ];
 
-    service.observeAuctions(auctions, 1_770_000_000);
+    const daily: DailyMarketSnapshot[] = [
+      {
+        playerId: 38365,
+        playerName: 'Mateo Joseph',
+        currentPrice: 810_000,
+        previousPrice: 760_000,
+        raw: {}
+      },
+      {
+        playerId: 40009,
+        playerName: 'Luvumbo',
+        currentPrice: 340_000,
+        previousPrice: 330_000,
+        raw: {}
+      }
+    ];
 
-    const report1 = await service.emitDailyReport(auctions, 1_770_000_010);
+    service.observeMarket({ auctions, daily }, 1_770_000_000);
+
+    const report1 = await service.emitDailyReport({ auctions, daily }, 1_770_000_010);
     expect(report1).not.toBeNull();
+    expect(report1?.daily.activeCount).toBe(2);
+    expect(report1?.auctions.activeCount).toBe(2);
 
-    const report2 = await service.emitDailyReport(auctions, 1_770_000_020);
+    const report2 = await service.emitDailyReport({ auctions, daily }, 1_770_000_020);
     expect(report2).toBeNull();
 
     expect(notifier.messages).toHaveLength(1);

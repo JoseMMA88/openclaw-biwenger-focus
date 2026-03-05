@@ -1,5 +1,5 @@
 import type { AuctionSnapshot } from '../domain/focus.js';
-import type { MarketPlayerSnapshot } from '../domain/market.js';
+import type { DailyMarketSnapshot, DailyMarketPlayerSnapshot, MarketPlayerSnapshot } from '../domain/market.js';
 import { nowSec } from '../utils/time.js';
 import { SqliteStore } from './SqliteStore.js';
 
@@ -12,6 +12,17 @@ interface MarketPlayerRow extends Record<string, unknown> {
   last_seen_price: number | null;
   last_until: number | null;
   highest_bidder_user_id: number | null;
+  was_active_at_last_report: number;
+}
+
+interface DailyMarketPlayerRow extends Record<string, unknown> {
+  player_id: number;
+  player_name: string;
+  first_seen_at: number;
+  first_seen_price: number | null;
+  prev_seen_price: number | null;
+  last_seen_at: number;
+  last_seen_price: number | null;
   was_active_at_last_report: number;
 }
 
@@ -74,6 +85,55 @@ export class MarketRepository {
     });
   }
 
+  upsertDailyMarket(players: DailyMarketSnapshot[], atSec = nowSec()): void {
+    this.store.transaction(() => {
+      for (const player of players) {
+        const incomingName = this.normalizeName(player.playerName, player.playerId);
+        const existing = this.store.get<DailyMarketPlayerRow>(
+          'SELECT * FROM market_daily_players WHERE player_id = ?;',
+          [player.playerId]
+        );
+
+        if (!existing) {
+          this.store.run(
+            `INSERT INTO market_daily_players (
+              player_id, player_name, first_seen_at, first_seen_price,
+              prev_seen_price, last_seen_at, last_seen_price, was_active_at_last_report
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0);`,
+            [
+              player.playerId,
+              incomingName,
+              atSec,
+              player.currentPrice,
+              null,
+              atSec,
+              player.currentPrice
+            ]
+          );
+          continue;
+        }
+
+        this.store.run(
+          `UPDATE market_daily_players
+           SET player_name = ?,
+               first_seen_price = ?,
+               prev_seen_price = ?,
+               last_seen_at = ?,
+               last_seen_price = ?
+           WHERE player_id = ?;`,
+          [
+            this.pickBestName(incomingName, String(existing.player_name)),
+            existing.first_seen_price === null ? player.currentPrice : existing.first_seen_price,
+            existing.last_seen_price,
+            atSec,
+            player.currentPrice,
+            player.playerId
+          ]
+        );
+      }
+    });
+  }
+
   hasReportForDate(reportDate: string): boolean {
     const row = this.store.get<{ report_date: string }>(
       'SELECT report_date FROM market_reports WHERE report_date = ? LIMIT 1;',
@@ -82,7 +142,13 @@ export class MarketRepository {
     return row !== null;
   }
 
-  recordReport(reportDate: string, payloadJson: string, activePlayerIds: number[], atSec = nowSec()): void {
+  recordReport(
+    reportDate: string,
+    payloadJson: string,
+    activeAuctionPlayerIds: number[],
+    activeDailyPlayerIds: number[],
+    atSec = nowSec()
+  ): void {
     this.store.transaction(() => {
       this.store.run(
         `INSERT INTO market_reports (report_date, created_at, payload_json)
@@ -94,14 +160,25 @@ export class MarketRepository {
       );
 
       this.store.run('UPDATE market_players SET was_active_at_last_report = 0;');
+      this.store.run('UPDATE market_daily_players SET was_active_at_last_report = 0;');
 
-      if (activePlayerIds.length > 0) {
-        const placeholders = activePlayerIds.map(() => '?').join(',');
+      if (activeAuctionPlayerIds.length > 0) {
+        const placeholders = activeAuctionPlayerIds.map(() => '?').join(',');
         this.store.run(
           `UPDATE market_players
            SET was_active_at_last_report = 1
            WHERE player_id IN (${placeholders});`,
-          activePlayerIds
+          activeAuctionPlayerIds
+        );
+      }
+
+      if (activeDailyPlayerIds.length > 0) {
+        const placeholders = activeDailyPlayerIds.map(() => '?').join(',');
+        this.store.run(
+          `UPDATE market_daily_players
+           SET was_active_at_last_report = 1
+           WHERE player_id IN (${placeholders});`,
+          activeDailyPlayerIds
         );
       }
     });
@@ -117,7 +194,20 @@ export class MarketRepository {
          WHERE player_id IN (${placeholders});`,
         playerIds
       )
-      .map((row) => this.mapPlayer(row));
+      .map((row) => this.mapAuctionPlayer(row));
+  }
+
+  getDailyPlayersByIds(playerIds: number[]): DailyMarketPlayerSnapshot[] {
+    if (playerIds.length === 0) return [];
+
+    const placeholders = playerIds.map(() => '?').join(',');
+    return this.store
+      .all<DailyMarketPlayerRow>(
+        `SELECT * FROM market_daily_players
+         WHERE player_id IN (${placeholders});`,
+        playerIds
+      )
+      .map((row) => this.mapDailyPlayer(row));
   }
 
   listPlayersSeenSince(minFirstSeenAt: number): MarketPlayerSnapshot[] {
@@ -129,7 +219,19 @@ export class MarketRepository {
          LIMIT 1000;`,
         [minFirstSeenAt]
       )
-      .map((row) => this.mapPlayer(row));
+      .map((row) => this.mapAuctionPlayer(row));
+  }
+
+  listDailyPlayersSeenSince(minFirstSeenAt: number): DailyMarketPlayerSnapshot[] {
+    return this.store
+      .all<DailyMarketPlayerRow>(
+        `SELECT * FROM market_daily_players
+         WHERE first_seen_at >= ?
+         ORDER BY first_seen_at DESC
+         LIMIT 1000;`,
+        [minFirstSeenAt]
+      )
+      .map((row) => this.mapDailyPlayer(row));
   }
 
   listEndedSinceLastReport(activePlayerIds: number[], limit = 20): MarketPlayerSnapshot[] {
@@ -143,7 +245,7 @@ export class MarketRepository {
            LIMIT ?;`,
           [safeLimit]
         )
-        .map((row) => this.mapPlayer(row));
+        .map((row) => this.mapAuctionPlayer(row));
     }
 
     const placeholders = activePlayerIds.map(() => '?').join(',');
@@ -156,7 +258,34 @@ export class MarketRepository {
          LIMIT ?;`,
         [...activePlayerIds, safeLimit]
       )
-      .map((row) => this.mapPlayer(row));
+      .map((row) => this.mapAuctionPlayer(row));
+  }
+
+  listDailyEndedSinceLastReport(activePlayerIds: number[], limit = 20): DailyMarketPlayerSnapshot[] {
+    const safeLimit = Math.max(1, Math.min(limit, 200));
+    if (activePlayerIds.length === 0) {
+      return this.store
+        .all<DailyMarketPlayerRow>(
+          `SELECT * FROM market_daily_players
+           WHERE was_active_at_last_report = 1
+           ORDER BY last_seen_at DESC
+           LIMIT ?;`,
+          [safeLimit]
+        )
+        .map((row) => this.mapDailyPlayer(row));
+    }
+
+    const placeholders = activePlayerIds.map(() => '?').join(',');
+    return this.store
+      .all<DailyMarketPlayerRow>(
+        `SELECT * FROM market_daily_players
+         WHERE was_active_at_last_report = 1
+           AND player_id NOT IN (${placeholders})
+         ORDER BY last_seen_at DESC
+         LIMIT ?;`,
+        [...activePlayerIds, safeLimit]
+      )
+      .map((row) => this.mapDailyPlayer(row));
   }
 
   getLastReport(): { reportDate: string; createdAt: number } | null {
@@ -174,7 +303,7 @@ export class MarketRepository {
     };
   }
 
-  private mapPlayer(row: MarketPlayerRow): MarketPlayerSnapshot {
+  private mapAuctionPlayer(row: MarketPlayerRow): MarketPlayerSnapshot {
     return {
       playerId: Number(row.player_id),
       playerName: String(row.player_name),
@@ -184,6 +313,19 @@ export class MarketRepository {
       lastSeenPrice: row.last_seen_price === null ? null : Number(row.last_seen_price),
       lastUntil: row.last_until === null ? null : Number(row.last_until),
       highestBidderUserId: row.highest_bidder_user_id === null ? null : Number(row.highest_bidder_user_id),
+      wasActiveAtLastReport: Number(row.was_active_at_last_report) === 1
+    };
+  }
+
+  private mapDailyPlayer(row: DailyMarketPlayerRow): DailyMarketPlayerSnapshot {
+    return {
+      playerId: Number(row.player_id),
+      playerName: String(row.player_name),
+      firstSeenAt: Number(row.first_seen_at),
+      firstSeenPrice: row.first_seen_price === null ? null : Number(row.first_seen_price),
+      prevSeenPrice: row.prev_seen_price === null ? null : Number(row.prev_seen_price),
+      lastSeenAt: Number(row.last_seen_at),
+      lastSeenPrice: row.last_seen_price === null ? null : Number(row.last_seen_price),
       wasActiveAtLastReport: Number(row.was_active_at_last_report) === 1
     };
   }
@@ -204,6 +346,6 @@ export class MarketRepository {
   }
 
   private isFallbackName(name: string): boolean {
-    return /^Player\\s+\\d+$/i.test(name.trim());
+    return /^Player\s+\d+$/i.test(name.trim());
   }
 }
