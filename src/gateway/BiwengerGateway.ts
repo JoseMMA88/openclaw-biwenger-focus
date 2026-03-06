@@ -89,6 +89,61 @@ export class BiwengerGateway {
   }
 
   async getDailyMarket(competitionCandidates: string[] = [], excludePlayerIds: number[] = []): Promise<DailyMarketSnapshot[]> {
+    const excluded = new Set<number>(excludePlayerIds);
+    const seen = new Set<number>();
+    const items: DailyMarketSnapshot[] = [];
+
+    try {
+      const payload = await this.mcp.callTool('biwenger_market_get_daily_market', {
+        include_player_details: true,
+        include_raw: true,
+        competition_candidates: competitionCandidates,
+        exclude_player_ids: excludePlayerIds
+      });
+
+      const directDaily = asArray(payload.daily).map((entry) => asRecord(entry));
+      for (const entry of directDaily) {
+        const parsed = this.mapDailyMarketPlayer(entry);
+        if (!parsed) continue;
+        if (excluded.has(parsed.playerId)) continue;
+        if (seen.has(parsed.playerId)) continue;
+        seen.add(parsed.playerId);
+        items.push(parsed);
+      }
+
+      if (items.length > 0) {
+        return items;
+      }
+
+      const arrays = this.extractDailyMarketArrays(payload);
+      for (const list of arrays) {
+        for (const entry of list) {
+          const parsed = this.mapDailyMarketPlayer(asRecord(entry));
+          if (!parsed) continue;
+          if (excluded.has(parsed.playerId)) continue;
+          if (seen.has(parsed.playerId)) continue;
+          seen.add(parsed.playerId);
+          items.push(parsed);
+        }
+      }
+
+      if (items.length === 0) {
+        const inferred = this.inferDailyMarketPlayers(payload, excluded);
+        for (const parsed of inferred) {
+          if (seen.has(parsed.playerId)) continue;
+          seen.add(parsed.playerId);
+          items.push(parsed);
+        }
+      }
+
+      return items;
+    } catch (error) {
+      this.logger.warn('Daily market tool failed; falling back to market snapshot heuristics', {
+        action: 'daily_market_tool_fallback',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
     const payload = await this.mcp.callTool('biwenger_market_get_snapshot', {
       include_auctions: true,
       include_player_details: true,
@@ -96,12 +151,8 @@ export class BiwengerGateway {
       competition_candidates: competitionCandidates
     });
 
-    const arrays = this.extractDailyMarketArrays(payload);
-    const excluded = new Set<number>(excludePlayerIds);
-    const seen = new Set<number>();
-    const items: DailyMarketSnapshot[] = [];
-
-    for (const list of arrays) {
+    const fallbackArrays = this.extractDailyMarketArrays(payload);
+    for (const list of fallbackArrays) {
       for (const entry of list) {
         const parsed = this.mapDailyMarketPlayer(asRecord(entry));
         if (!parsed) continue;
@@ -443,8 +494,9 @@ export class BiwengerGateway {
       'market_value'
     ]);
 
-    const previousPrice = pickFirstNumber(source, [
+    const previousPriceRaw = pickFirstNumber(source, [
       'previousPrice',
+      'previous_price',
       'prevPrice',
       'lastPrice',
       'last_price',
@@ -452,6 +504,15 @@ export class BiwengerGateway {
       'old_price',
       'priceBefore'
     ]);
+    const priceIncrement = pickFirstNumber(source, [
+      'priceIncrement',
+      'price_increment',
+      'increment',
+      'deltaPrice',
+      'priceDiff'
+    ]);
+    const previousPrice = previousPriceRaw
+      ?? ((currentPrice !== null && priceIncrement !== null) ? currentPrice - priceIncrement : null);
 
     return {
       playerId,
