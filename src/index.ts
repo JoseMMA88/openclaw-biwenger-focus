@@ -126,7 +126,8 @@ class PluginRuntime {
       gateway: this.gateway,
       logger: this.logger,
       tickSec: config.marketReportTickSec,
-      enabled: config.marketReportEnabled
+      enabled: config.marketReportEnabled,
+      openingOnly: config.marketReportOpeningOnly
     });
   }
 

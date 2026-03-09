@@ -56,7 +56,8 @@ Copia `.env.example` a `.env` y ajusta:
 - `MARKET_REPORT_ENABLED=true` (activar informe diario de mercado)
 - `MARKET_REPORT_HOUR=9` (hora local del informe diario)
 - `MARKET_REPORT_MINUTE=0` (minuto local del informe diario)
-- `MARKET_REPORT_TICK_SEC=60` (frecuencia de observación del mercado)
+- `MARKET_REPORT_OPENING_ONLY=true` (por defecto; solo consulta API cuando el informe está vencido por hora, ideal para "foto de apertura")
+- `MARKET_REPORT_TICK_SEC=60` (frecuencia de comprobación del scheduler; si `MARKET_REPORT_OPENING_ONLY=true`, no implica llamadas a API fuera de ventana)
 - `MARKET_REPORT_TOP_LIMIT=10` (máximo de jugadores por bloque del informe)
 - Credenciales Biwenger para el MCP:
   - `BIWENGER_TOKEN` **o** `BIWENGER_EMAIL` + `BIWENGER_PASSWORD`

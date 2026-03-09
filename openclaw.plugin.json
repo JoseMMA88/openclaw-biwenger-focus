@@ -1,7 +1,7 @@
 {
   "id": "biwenger-focus",
   "name": "Biwenger Focus",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "entry": "dist/index.js",
   "description": "Automatic Biwenger auction focus worker with conservative bidding strategy",
   "permissions": {
@@ -42,6 +42,7 @@
       "tz": { "type": "string" },
       "market_report_enabled": { "type": "boolean" },
       "market_report_tick_sec": { "type": "integer", "minimum": 10 },
+      "market_report_opening_only": { "type": "boolean" },
       "market_report_hour": { "type": "integer", "minimum": 0, "maximum": 23 },
       "market_report_minute": { "type": "integer", "minimum": 0, "maximum": 59 },
       "market_report_top_limit": { "type": "integer", "minimum": 1, "maximum": 50 }

@@ -20,6 +20,7 @@ export interface PluginConfig {
   armedMaxPollSec: number;
   marketReportEnabled: boolean;
   marketReportTickSec: number;
+  marketReportOpeningOnly: boolean;
   marketReportHour: number;
   marketReportMinute: number;
   marketReportTopLimit: number;
@@ -42,6 +43,7 @@ export interface OpenClawRuntimeConfig {
   log_level?: unknown;
   market_report_enabled?: unknown;
   market_report_tick_sec?: unknown;
+  market_report_opening_only?: unknown;
   market_report_hour?: unknown;
   market_report_minute?: unknown;
   market_report_top_limit?: unknown;
@@ -146,6 +148,7 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     armedMaxPollSec: toPositiveInt(env.FOCUS_ARMED_MAX_POLL_SEC, 900),
     marketReportEnabled: toBoolean(rawConfig.market_report_enabled ?? env.MARKET_REPORT_ENABLED, true),
     marketReportTickSec: toPositiveInt(rawConfig.market_report_tick_sec ?? env.MARKET_REPORT_TICK_SEC, 60),
+    marketReportOpeningOnly: toBoolean(rawConfig.market_report_opening_only ?? env.MARKET_REPORT_OPENING_ONLY, true),
     marketReportHour: Math.max(0, Math.min(23, toPositiveInt(rawConfig.market_report_hour ?? env.MARKET_REPORT_HOUR, 9))),
     marketReportMinute: Math.max(0, Math.min(59, toPositiveInt(rawConfig.market_report_minute ?? env.MARKET_REPORT_MINUTE, 0))),
     marketReportTopLimit: toPositiveInt(rawConfig.market_report_top_limit ?? env.MARKET_REPORT_TOP_LIMIT, 10),

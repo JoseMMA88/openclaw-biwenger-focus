@@ -10,6 +10,7 @@ interface MarketReportWorkerOptions {
   logger: Logger;
   tickSec: number;
   enabled: boolean;
+  openingOnly: boolean;
 }
 
 export class MarketReportWorker {
@@ -18,6 +19,7 @@ export class MarketReportWorker {
   private readonly logger: Logger;
   private readonly tickSec: number;
   private readonly enabled: boolean;
+  private readonly openingOnly: boolean;
 
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
@@ -29,6 +31,7 @@ export class MarketReportWorker {
     this.logger = options.logger;
     this.tickSec = options.tickSec;
     this.enabled = options.enabled;
+    this.openingOnly = options.openingOnly;
   }
 
   start(): void {
@@ -49,7 +52,8 @@ export class MarketReportWorker {
 
     this.logger.info('Market report worker started', {
       action: 'market_worker_started',
-      tick_sec: this.tickSec
+      tick_sec: this.tickSec,
+      opening_only: this.openingOnly
     });
   }
 
@@ -75,6 +79,10 @@ export class MarketReportWorker {
     this.runningTick = true;
 
     try {
+      if (this.openingOnly && !this.service.isDailyReportDue()) {
+        return;
+      }
+
       const data = await this.fetchMarketData();
       this.service.observeMarket(data);
 
