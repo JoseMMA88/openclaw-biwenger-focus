@@ -103,8 +103,10 @@ export class BiwengerGateway {
 
       const directDaily = asArray(payload.daily).map((entry) => asRecord(entry));
       for (const entry of directDaily) {
+        if (!this.isDailyMarketFreeEntry(entry)) continue;
         const parsed = this.mapDailyMarketPlayer(entry);
         if (!parsed) continue;
+        if (parsed.currentPrice === null) continue;
         if (excluded.has(parsed.playerId)) continue;
         if (seen.has(parsed.playerId)) continue;
         seen.add(parsed.playerId);
@@ -118,8 +120,11 @@ export class BiwengerGateway {
       const arrays = this.extractDailyMarketArrays(payload);
       for (const list of arrays) {
         for (const entry of list) {
-          const parsed = this.mapDailyMarketPlayer(asRecord(entry));
+          const record = asRecord(entry);
+          if (!this.isDailyMarketFreeEntry(record)) continue;
+          const parsed = this.mapDailyMarketPlayer(record);
           if (!parsed) continue;
+          if (parsed.currentPrice === null) continue;
           if (excluded.has(parsed.playerId)) continue;
           if (seen.has(parsed.playerId)) continue;
           seen.add(parsed.playerId);
@@ -130,6 +135,8 @@ export class BiwengerGateway {
       if (items.length === 0) {
         const inferred = this.inferDailyMarketPlayers(payload, excluded);
         for (const parsed of inferred) {
+          if (!this.isDailyMarketFreeEntry(parsed.raw)) continue;
+          if (parsed.currentPrice === null) continue;
           if (seen.has(parsed.playerId)) continue;
           seen.add(parsed.playerId);
           items.push(parsed);
@@ -154,8 +161,11 @@ export class BiwengerGateway {
     const fallbackArrays = this.extractDailyMarketArrays(payload);
     for (const list of fallbackArrays) {
       for (const entry of list) {
-        const parsed = this.mapDailyMarketPlayer(asRecord(entry));
+        const record = asRecord(entry);
+        if (!this.isDailyMarketFreeEntry(record)) continue;
+        const parsed = this.mapDailyMarketPlayer(record);
         if (!parsed) continue;
+        if (parsed.currentPrice === null) continue;
         if (excluded.has(parsed.playerId)) continue;
         if (seen.has(parsed.playerId)) continue;
         seen.add(parsed.playerId);
@@ -166,6 +176,8 @@ export class BiwengerGateway {
     if (items.length === 0) {
       const inferred = this.inferDailyMarketPlayers(payload, excluded);
       for (const parsed of inferred) {
+        if (!this.isDailyMarketFreeEntry(parsed.raw)) continue;
+        if (parsed.currentPrice === null) continue;
         if (seen.has(parsed.playerId)) continue;
         seen.add(parsed.playerId);
         items.push(parsed);
@@ -560,5 +572,21 @@ export class BiwengerGateway {
     if (item.previousPrice !== null) score += 1;
     if (!this.isMissingPlayerName(item.playerName)) score += 1;
     return score;
+  }
+
+  private isDailyMarketFreeEntry(source: Record<string, unknown>): boolean {
+    const ownerUserId = pickFirstPositiveInt(source, [
+      'owner_user_id',
+      'ownerUserId',
+      'owner.id',
+      'ownerID',
+      'owner_user.id',
+      'user.id',
+      'userID',
+      'raw.owner_user_id',
+      'raw.owner.id',
+      'raw.user.id'
+    ]);
+    return ownerUserId === null;
   }
 }
