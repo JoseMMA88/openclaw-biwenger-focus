@@ -148,8 +148,11 @@ export class MarketReportService {
       .filter((player) => this.getDateKeyFromEpoch(player.firstSeenAt) === reportDate)
       .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
 
+    const dailyActiveIds = new Set(dailyIds);
     const dailyNewToday = recentDailySnapshots
       .filter((player) => this.getDateKeyFromEpoch(player.firstSeenAt) === reportDate)
+      // Keep "new today" aligned with currently active daily market players.
+      .filter((player) => dailyActiveIds.has(player.playerId))
       .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
 
     const auctionTopRisers = auctionSnapshots
