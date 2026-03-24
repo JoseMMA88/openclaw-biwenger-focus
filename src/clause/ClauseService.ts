@@ -288,9 +288,52 @@ export class ClauseService {
 
     const clauseInfo = await this.gateway.getPlayerClauseInfo(playerId, competition);
     if (!clauseInfo.clauseAmount || clauseInfo.clauseAmount <= 0) {
+      const playerLabel = clauseInfo.playerName ?? `player_id=${playerId}`;
+
+      if (!clauseInfo.ownerUserId) {
+        throw new ClauseError(
+          'CLAUSE_NOT_AVAILABLE',
+          `No se pudo resolver la cláusula actual de ${playerLabel}: el jugador aparece sin owner en la liga ahora mismo (podría estar libre). Indica max_clause_amount manualmente.`,
+          {
+            reason: 'owner_not_found',
+            player_id: playerId,
+            player_name: clauseInfo.playerName,
+            owner_user_id: null
+          }
+        );
+      }
+
+      let myUserId: number | null = null;
+      try {
+        const roster = await this.gateway.getMyUserRoster();
+        myUserId = roster.userId;
+      } catch {
+        myUserId = null;
+      }
+
+      if (myUserId && clauseInfo.ownerUserId === myUserId) {
+        throw new ClauseError(
+          'CLAUSE_NOT_AVAILABLE',
+          `No se puede usar "cláusula actual" para ${playerLabel} porque el jugador ya pertenece a tu equipo.`,
+          {
+            reason: 'player_already_owned_by_me',
+            player_id: playerId,
+            player_name: clauseInfo.playerName,
+            owner_user_id: clauseInfo.ownerUserId,
+            my_user_id: myUserId
+          }
+        );
+      }
+
       throw new ClauseError(
         'CLAUSE_NOT_AVAILABLE',
-        'No se pudo resolver la cláusula actual del jugador; indica max_clause_amount manualmente.'
+        `No se pudo resolver la cláusula actual de ${playerLabel}: owner_user_id=${clauseInfo.ownerUserId} pero sin importe de cláusula visible. Indica max_clause_amount manualmente.`,
+        {
+          reason: 'clause_amount_missing',
+          player_id: playerId,
+          player_name: clauseInfo.playerName,
+          owner_user_id: clauseInfo.ownerUserId
+        }
       );
     }
 
