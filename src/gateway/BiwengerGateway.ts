@@ -210,6 +210,8 @@ export class BiwengerGateway {
     const clause = asRecord(player.clause);
     const details = asRecord(payload.details);
     const detailsRaw = asRecord(details.raw);
+    const detailsPlayer = asRecord(details.player);
+    const detailsRawPlayer = asRecord(detailsRaw.player);
     const detailsClause = asRecord(details.clause);
     const detailsOwner = asRecord(details.owner);
     const detailsRawClause = asRecord(detailsRaw.clause);
@@ -218,6 +220,8 @@ export class BiwengerGateway {
       ...payload,
       data,
       player,
+      detailsPlayer,
+      detailsRawPlayer,
       owner,
       clause,
       details,
@@ -230,6 +234,8 @@ export class BiwengerGateway {
 
     const resolvedPlayerId = pickFirstPositiveInt(source, [
       'player.id',
+      'details.player.id',
+      'detailsRaw.player.id',
       'id',
       'details.player_id',
       'details.id',
@@ -239,6 +245,10 @@ export class BiwengerGateway {
     const playerName = pickFirstString(source, [
       'player.name',
       'player.shortName',
+      'details.player.name',
+      'details.player.shortName',
+      'detailsRaw.player.name',
+      'detailsRaw.player.shortName',
       'name',
       'details.name',
       'details.shortName',
@@ -256,6 +266,18 @@ export class BiwengerGateway {
       'player.releaseClause',
       'player.buyoutClause',
       'player.clausePrice',
+      'details.player.clause',
+      'details.player.clauseValue',
+      'details.player.clause_amount',
+      'details.player.releaseClause',
+      'details.player.buyoutClause',
+      'details.player.clausePrice',
+      'detailsRaw.player.clause',
+      'detailsRaw.player.clauseValue',
+      'detailsRaw.player.clause_amount',
+      'detailsRaw.player.releaseClause',
+      'detailsRaw.player.buyoutClause',
+      'detailsRaw.player.clausePrice',
       'details.clause',
       'details.clauseValue',
       'details.clause_amount',
@@ -280,6 +302,12 @@ export class BiwengerGateway {
       'player.owner.id',
       'player.ownerID',
       'player.owner_user_id',
+      'details.player.owner.id',
+      'details.player.ownerID',
+      'details.player.owner_user_id',
+      'detailsRaw.player.owner.id',
+      'detailsRaw.player.ownerID',
+      'detailsRaw.player.owner_user_id',
       'details.owner.id',
       'details.ownerID',
       'details.owner_user_id',
@@ -296,12 +324,46 @@ export class BiwengerGateway {
       'userID'
     ]);
 
+    let fallbackClauseAmount: number | null = null;
+    let fallbackOwnerUserId: number | null = null;
+    let fallbackPlayerName: string | null = null;
+    let fallbackRaw: Record<string, unknown> | null = null;
+    const shouldFallback = (!clauseAmount || clauseAmount <= 0) || !ownerUserId;
+
+    if (shouldFallback) {
+      try {
+        const leaguePayload = await this.mcp.callTool('biwenger_league_get_details', {
+          fields: '*,users(id,name,players(id,name,shortName,owner(clause,clauseValue,clause_amount,releaseClause,buyoutClause,clausePrice)))'
+        });
+        const extracted = this.extractClauseFromLeagueDetails(leaguePayload, resolvedPlayerId);
+        if (extracted) {
+          fallbackClauseAmount = extracted.clauseAmount;
+          fallbackOwnerUserId = extracted.ownerUserId;
+          fallbackPlayerName = extracted.playerName;
+          fallbackRaw = extracted.raw;
+        }
+      } catch (error) {
+        this.logger.debug('League details fallback failed while resolving clause info', {
+          action: 'clause_info_league_fallback_failed',
+          player_id: resolvedPlayerId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    const normalizedClauseAmount = (clauseAmount !== null && clauseAmount > 0)
+      ? clauseAmount
+      : fallbackClauseAmount;
+
     return {
       playerId: resolvedPlayerId,
-      playerName,
-      clauseAmount,
-      ownerUserId,
-      raw: source
+      playerName: playerName ?? fallbackPlayerName,
+      clauseAmount: normalizedClauseAmount,
+      ownerUserId: ownerUserId ?? fallbackOwnerUserId,
+      raw: {
+        ...source,
+        fallback: fallbackRaw
+      }
     };
   }
 
@@ -645,5 +707,71 @@ export class BiwengerGateway {
       'raw.user.id'
     ]);
     return ownerUserId === null;
+  }
+
+  private extractClauseFromLeagueDetails(
+    payload: Record<string, unknown>,
+    targetPlayerId: number
+  ): {
+    clauseAmount: number | null;
+    ownerUserId: number | null;
+    playerName: string | null;
+    raw: Record<string, unknown>;
+  } | null {
+    const root = asRecord(payload.data);
+    const league = asRecord(root.data);
+    const users = asArray(league.users);
+
+    for (const entry of users) {
+      const user = asRecord(entry);
+      const ownerUserId = pickFirstPositiveInt(user, ['id', 'userID', 'user.id']);
+      const players = asArray(user.players);
+
+      for (const playerEntry of players) {
+        const player = asRecord(playerEntry);
+        const playerId = pickFirstPositiveInt(player, ['id', 'player_id', 'playerID']);
+        if (!playerId || playerId !== targetPlayerId) continue;
+
+        const owner = asRecord(player.owner);
+        const clauseAmount = pickFirstNumber({ player, owner }, [
+          'owner.clause',
+          'owner.clauseValue',
+          'owner.clause_amount',
+          'owner.releaseClause',
+          'owner.buyoutClause',
+          'owner.clausePrice',
+          'player.clause',
+          'player.clauseValue',
+          'player.clause_amount',
+          'player.releaseClause',
+          'player.buyoutClause',
+          'player.clausePrice'
+        ]);
+        const resolvedOwnerUserId = ownerUserId ?? pickFirstPositiveInt(owner, [
+          'id',
+          'user_id',
+          'userID'
+        ]);
+        const playerName = pickFirstString(player, [
+          'name',
+          'shortName',
+          'displayName',
+          'fullName'
+        ]);
+
+        return {
+          clauseAmount,
+          ownerUserId: resolvedOwnerUserId,
+          playerName,
+          raw: {
+            user,
+            player,
+            owner
+          }
+        };
+      }
+    }
+
+    return null;
   }
 }
