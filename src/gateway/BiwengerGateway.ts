@@ -208,16 +208,47 @@ export class BiwengerGateway {
     const player = asRecord(data.player);
     const owner = asRecord(player.owner);
     const clause = asRecord(player.clause);
+    const details = asRecord(payload.details);
+    const detailsRaw = asRecord(details.raw);
+    const detailsClause = asRecord(details.clause);
+    const detailsOwner = asRecord(details.owner);
+    const detailsRawClause = asRecord(detailsRaw.clause);
+    const detailsRawOwner = asRecord(detailsRaw.owner);
     const source = {
       ...payload,
       data,
       player,
       owner,
-      clause
+      clause,
+      details,
+      detailsRaw,
+      detailsClause,
+      detailsOwner,
+      detailsRawClause,
+      detailsRawOwner
     };
 
-    const resolvedPlayerId = pickFirstPositiveInt(source, ['player.id', 'id']) ?? playerId;
-    const playerName = pickFirstString(source, ['player.name', 'player.shortName', 'name']);
+    const resolvedPlayerId = pickFirstPositiveInt(source, [
+      'player.id',
+      'id',
+      'details.player_id',
+      'details.id',
+      'detailsRaw.id',
+      'detailsRaw.player_id'
+    ]) ?? playerId;
+    const playerName = pickFirstString(source, [
+      'player.name',
+      'player.shortName',
+      'name',
+      'details.name',
+      'details.shortName',
+      'details.displayName',
+      'details.fullName',
+      'detailsRaw.name',
+      'detailsRaw.shortName',
+      'detailsRaw.displayName',
+      'detailsRaw.fullName'
+    ]);
     const clauseAmount = pickFirstNumber(source, [
       'player.clause',
       'player.clauseValue',
@@ -225,6 +256,22 @@ export class BiwengerGateway {
       'player.releaseClause',
       'player.buyoutClause',
       'player.clausePrice',
+      'details.clause',
+      'details.clauseValue',
+      'details.clause_amount',
+      'details.releaseClause',
+      'details.buyoutClause',
+      'details.clausePrice',
+      'detailsRaw.clause',
+      'detailsRaw.clauseValue',
+      'detailsRaw.clause_amount',
+      'detailsRaw.releaseClause',
+      'detailsRaw.buyoutClause',
+      'detailsRaw.clausePrice',
+      'detailsClause.amount',
+      'detailsClause.value',
+      'detailsRawClause.amount',
+      'detailsRawClause.value',
       'clause.amount',
       'clause.value',
       'clause'
@@ -233,6 +280,16 @@ export class BiwengerGateway {
       'player.owner.id',
       'player.ownerID',
       'player.owner_user_id',
+      'details.owner.id',
+      'details.ownerID',
+      'details.owner_user_id',
+      'detailsRaw.owner.id',
+      'detailsRaw.ownerID',
+      'detailsRaw.owner_user_id',
+      'detailsOwner.id',
+      'detailsOwner.user_id',
+      'detailsRawOwner.id',
+      'detailsRawOwner.user_id',
       'owner.id',
       'owner.user_id',
       'user.id',
