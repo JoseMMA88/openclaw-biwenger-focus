@@ -32,7 +32,7 @@ export interface ClauseRuntime {
 
 export interface CreateClauseScheduleInput {
   playerQuery: string;
-  maxClauseAmount: number;
+  maxClauseAmount?: number;
   executeAt: number;
   competition?: string;
 }

@@ -1,6 +1,6 @@
 {
   "name": "openclaw-biwenger-focus",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "type": "module",
   "description": "OpenClaw plugin for automatic Biwenger auction focus bidding",

@@ -112,7 +112,7 @@ export async function registerClauseTools(api: OpenClawApiLike, service: ClauseS
   const tools: Array<Record<string, unknown>> = [
     {
       name: 'biwenger_clause_schedule_create',
-      description: 'Programa un clausulazo para fecha/hora concreta con tope máximo de importe.',
+      description: 'Programa un clausulazo para fecha/hora concreta. Si no se indica max_clause_amount, usa la cláusula actual del jugador como tope.',
       parameters: {
         type: 'object',
         properties: {
@@ -122,7 +122,7 @@ export async function registerClauseTools(api: OpenClawApiLike, service: ClauseS
           execute_at_iso: { type: 'string', description: 'Fecha ISO-8601 (ej. 2026-03-05T22:30:00+01:00)' },
           competition: { type: 'string' }
         },
-        required: ['player_query', 'max_clause_amount'],
+        required: ['player_query'],
         additionalProperties: false
       },
       execute: async (_id: string, raw: unknown) => {
@@ -130,7 +130,7 @@ export async function registerClauseTools(api: OpenClawApiLike, service: ClauseS
           const args = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
           const result = await service.createSchedule({
             playerQuery: String(args.player_query ?? ''),
-            maxClauseAmount: Number(args.max_clause_amount),
+            maxClauseAmount: toOptionalPositiveInt(args.max_clause_amount, 'max_clause_amount'),
             executeAt: toExecuteAt(args),
             competition: typeof args.competition === 'string' ? args.competition : undefined
           });
@@ -139,6 +139,8 @@ export async function registerClauseTools(api: OpenClawApiLike, service: ClauseS
             clause_id: result.clauseId,
             player_id: result.playerId,
             resolved_player_name: result.resolvedPlayerName,
+            resolved_max_clause_amount: result.resolvedMaxClauseAmount,
+            resolved_max_clause_amount_source: result.resolvedMaxClauseAmountSource,
             status: result.status,
             scheduled_at: result.scheduledAt,
             scheduled_at_iso: new Date(result.scheduledAt * 1000).toISOString(),

@@ -156,12 +156,13 @@ Input:
 ```json
 {
   "player_query": "Marc Casadó",
-  "max_clause_amount": 1150000,
   "execute_at_iso": "2026-03-06T20:00:00+01:00"
 }
 ```
 
 `execute_at` (epoch) también está soportado.
+
+`max_clause_amount` es opcional. Si no se indica, el plugin usa automáticamente la cláusula actual del jugador como tope.
 
 ### `biwenger_clause_schedule_status`
 Input:

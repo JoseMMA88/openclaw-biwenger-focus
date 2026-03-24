@@ -32,6 +32,8 @@ interface CreateClauseOutput {
   clauseId: string;
   playerId: number;
   resolvedPlayerName: string;
+  resolvedMaxClauseAmount: number;
+  resolvedMaxClauseAmountSource: 'input' | 'current_clause';
   status: ClauseStatus;
   scheduledAt: number;
   secondsUntilExecution: number;
@@ -61,7 +63,6 @@ export class ClauseService {
       throw new ClauseError('VALIDATION_ERROR', 'player_query no puede estar vacío.');
     }
 
-    const maxClauseAmount = this.requirePositiveInt(input.maxClauseAmount, 'max_clause_amount');
     const executeAt = this.requireFutureEpoch(input.executeAt, 'execute_at');
 
     const matches = await this.gateway.searchPlayerByName(playerQuery, input.competition);
@@ -70,6 +71,10 @@ export class ClauseService {
     }
 
     const bestMatch = this.pickBestMatch(playerQuery, matches);
+    const resolvedMaxClauseAmount = await this.resolveMaxClauseAmount(input.maxClauseAmount, bestMatch.id, input.competition);
+    const resolvedMaxClauseAmountSource: 'input' | 'current_clause' = input.maxClauseAmount !== undefined
+      ? 'input'
+      : 'current_clause';
     const active = this.repo.getActiveTaskByPlayerId(bestMatch.id);
     if (active) {
       throw new ClauseError('CLAUSE_CONFLICT', 'Ya existe una cláusula programada activa para este jugador.', {
@@ -84,7 +89,7 @@ export class ClauseService {
       playerId: bestMatch.id,
       playerName: bestMatch.name,
       competition: input.competition?.trim() || null,
-      maxClauseAmount,
+      maxClauseAmount: resolvedMaxClauseAmount,
       scheduledAt: executeAt
     });
 
@@ -105,6 +110,8 @@ export class ClauseService {
       clauseId: created.id,
       playerId: created.playerId,
       resolvedPlayerName: created.playerName,
+      resolvedMaxClauseAmount: created.maxClauseAmount,
+      resolvedMaxClauseAmountSource,
       status: created.status,
       scheduledAt: created.scheduledAt,
       secondsUntilExecution: Math.max(0, created.scheduledAt - nowSec())
@@ -268,6 +275,26 @@ export class ClauseService {
       throw new ClauseError('VALIDATION_ERROR', `${field} debe ser entero positivo.`);
     }
     return parsed;
+  }
+
+  private async resolveMaxClauseAmount(
+    maxClauseAmount: number | undefined,
+    playerId: number,
+    competition?: string
+  ): Promise<number> {
+    if (maxClauseAmount !== undefined) {
+      return this.requirePositiveInt(maxClauseAmount, 'max_clause_amount');
+    }
+
+    const clauseInfo = await this.gateway.getPlayerClauseInfo(playerId, competition);
+    if (!clauseInfo.clauseAmount || clauseInfo.clauseAmount <= 0) {
+      throw new ClauseError(
+        'CLAUSE_NOT_AVAILABLE',
+        'No se pudo resolver la cláusula actual del jugador; indica max_clause_amount manualmente.'
+      );
+    }
+
+    return this.requirePositiveInt(clauseInfo.clauseAmount, 'max_clause_amount');
   }
 
   private requireFutureEpoch(value: number, field: string): number {
