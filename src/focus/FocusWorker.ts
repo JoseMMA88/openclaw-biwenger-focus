@@ -201,6 +201,21 @@ export class FocusWorker {
           );
         }
 
+        if (decision.reason === 'highest_bidder_unknown_after_own_bid') {
+          await this.service.emitEvent(
+            task.id,
+            'bid_guard_unknown_highest_bidder',
+            `🛡️ Pausa de auto-puja en ${task.playerName}: líder actual desconocido; se evita sobrepujarte a ti mismo.`,
+            {
+              focus_id: task.id,
+              player_id: task.playerId,
+              current_price: auction.currentPrice,
+              last_bid_amount: patchedRuntime.lastBidAmount
+            },
+            1800
+          );
+        }
+
         this.service.setNextPollAt(task.id, now + this.resolveBiddingPollSec(task));
         return;
       }

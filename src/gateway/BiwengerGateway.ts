@@ -484,11 +484,23 @@ export class BiwengerGateway {
     const until = this.normalizeEpochSeconds(untilRaw);
 
     const highestBidderUserId = pickFirstPositiveInt(source, [
+      'owner_user_id',
+      'ownerUserId',
+      'ownerID',
+      'owner.id',
+      'to.id',
       'userID',
       'user.id',
+      'user_id',
       'bid.user_id',
+      'bid.user.id',
       'highestBid.user_id',
-      'currentBid.user_id'
+      'highestBid.user.id',
+      'highestBidderUserId',
+      'highestBidder.id',
+      'highest_bidder_user_id',
+      'currentBid.user_id',
+      'currentBid.user.id'
     ]);
 
     return {

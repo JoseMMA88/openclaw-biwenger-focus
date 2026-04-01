@@ -89,6 +89,17 @@ export function decideBidAction(input: DecideInput): BidDecision {
     };
   }
 
+  // Conservative guard: if we already placed a bid but API does not expose the current
+  // highest bidder, do not auto-rebid to avoid self-overbidding loops.
+  if (!isCurrentHighestBidder && runtime.lastBidAmount !== null && auction.highestBidderUserId === null) {
+    return {
+      action: 'MONITOR_BIDDING',
+      reason: 'highest_bidder_unknown_after_own_bid',
+      remainingSec,
+      targetBid
+    };
+  }
+
   if (isCurrentHighestBidder) {
     return {
       action: 'MONITOR_BIDDING',
