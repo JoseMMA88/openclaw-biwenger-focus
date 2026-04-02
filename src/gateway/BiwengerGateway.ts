@@ -68,7 +68,8 @@ export class BiwengerGateway {
       .filter((entry): entry is AuctionSnapshot => entry !== null);
 
     const unresolved = auctions.filter((entry) => this.isMissingPlayerName(entry.playerName));
-    if (unresolved.length > 0) {
+    const missingHighestBidder = auctions.some((entry) => entry.highestBidderUserId === null);
+    if (unresolved.length > 0 || missingHighestBidder) {
       const snapshotPayload = await this.mcp.callTool('biwenger_market_get_snapshot', {
         include_auctions: true,
         include_player_details: true,
@@ -77,10 +78,19 @@ export class BiwengerGateway {
       });
 
       const playerNameIndex = this.collectPlayerNameIndex(snapshotPayload);
+      const highestBidderIndex = this.collectHighestBidderIndex(snapshotPayload);
       for (const auction of unresolved) {
         const resolved = playerNameIndex.get(auction.playerId);
         if (resolved && !this.isMissingPlayerName(resolved)) {
           auction.playerName = resolved;
+        }
+      }
+
+      for (const auction of auctions) {
+        if (auction.highestBidderUserId !== null) continue;
+        const resolved = highestBidderIndex.get(auction.playerId);
+        if (resolved) {
+          auction.highestBidderUserId = resolved;
         }
       }
     }
@@ -548,6 +558,101 @@ export class BiwengerGateway {
 
     visit(payload);
     return index;
+  }
+
+  private collectHighestBidderIndex(payload: Record<string, unknown>): Map<number, number> {
+    const offersByPlayer = new Map<number, { userId: number; amount: number; createdAt: number }>();
+    const bidByPlayer = new Map<number, number>();
+
+    const auctionArrays = this.extractArrays(payload, [
+      'raw.data.auctions',
+      'data.auctions',
+      'auctions'
+    ]);
+    for (const auction of auctionArrays) {
+      const playerId = pickFirstPositiveInt(auction, ['player.id', 'player_id', 'playerID', 'requestedPlayers.0']);
+      const userId = pickFirstPositiveInt(auction, [
+        'user.id',
+        'userID',
+        'user_id',
+        'owner_user_id',
+        'highestBid.user_id',
+        'highestBid.user.id',
+        'highestBidderUserId',
+        'highest_bidder_user_id'
+      ]);
+      if (playerId && userId) {
+        bidByPlayer.set(playerId, userId);
+      }
+    }
+
+    const offerArrays = this.extractArrays(payload, [
+      'raw.data.offers',
+      'data.offers',
+      'offers'
+    ]);
+    for (const offer of offerArrays) {
+      const type = (pickFirstString(offer, ['type']) ?? '').trim().toLowerCase();
+      if (type !== 'bid') continue;
+
+      const playerId = pickFirstPositiveInt(offer, [
+        'requestedPlayers.0',
+        'requestedPlayers.0.id',
+        'requested_players.0',
+        'requested_players.0.id',
+        'player.id',
+        'player_id',
+        'playerID'
+      ]);
+      const userId = pickFirstPositiveInt(offer, [
+        'from.id',
+        'from.user_id',
+        'from.user.id',
+        'fromID',
+        'user.id',
+        'userID',
+        'user_id'
+      ]);
+      if (!playerId || !userId) continue;
+
+      const amount = pickFirstNumber(offer, ['amount', 'price']) ?? 0;
+      const createdAt = pickFirstNumber(offer, ['created', 'date', 'createdAt', 'updatedAt']) ?? 0;
+      const existing = offersByPlayer.get(playerId);
+
+      if (
+        !existing
+        || amount > existing.amount
+        || (amount === existing.amount && createdAt > existing.createdAt)
+      ) {
+        offersByPlayer.set(playerId, { userId, amount, createdAt });
+      }
+    }
+
+    const index = new Map<number, number>();
+    for (const [playerId, value] of offersByPlayer.entries()) {
+      index.set(playerId, value.userId);
+    }
+    for (const [playerId, userId] of bidByPlayer.entries()) {
+      if (!index.has(playerId)) {
+        index.set(playerId, userId);
+      }
+    }
+
+    return index;
+  }
+
+  private extractArrays(payload: Record<string, unknown>, paths: string[]): Array<Record<string, unknown>> {
+    const output: Array<Record<string, unknown>> = [];
+    for (const path of paths) {
+      const list = asArray(getByPath(payload, path));
+      for (const item of list) {
+        const record = asRecord(item);
+        if (Object.keys(record).length > 0) {
+          output.push(record);
+        }
+      }
+    }
+    return output;
   }
 
   private isMissingPlayerName(playerName: string | null): boolean {
