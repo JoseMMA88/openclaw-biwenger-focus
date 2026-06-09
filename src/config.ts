@@ -79,10 +79,16 @@ function readOpenClawPluginConfig(env: NodeJS.ProcessEnv): OpenClawRuntimeConfig
 function normalizeRuntimeConfig(value: OpenClawRuntimeConfig): OpenClawRuntimeConfig {
   const record = asRecord(value);
   const nested = asRecord(record?.config);
-  return {
+  return omitUndefined({
     ...record,
     ...nested
-  };
+  });
+}
+
+function omitUndefined(value: Record<string, unknown>): OpenClawRuntimeConfig {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as OpenClawRuntimeConfig;
 }
 
 function toStringValue(value: unknown): string | null {

@@ -53,6 +53,13 @@ class PluginRuntime {
     const config = loadConfig(rawConfig);
 
     this.logger = new Logger(config.logLevel);
+    this.logger.info('Biwenger focus config resolved', {
+      action: 'plugin_config_resolved',
+      db_path: config.dbPath,
+      market_report_enabled: config.marketReportEnabled,
+      market_report_tick_sec: config.marketReportTickSec,
+      market_report_opening_only: config.marketReportOpeningOnly
+    });
 
     this.store = new SqliteStore(config.dbPath);
     const focusRepo = new FocusRepository(this.store);
@@ -211,7 +218,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.34'
+  version: '0.1.35'
 };
 
 function reportStartupError(error: unknown): void {

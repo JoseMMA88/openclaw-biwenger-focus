@@ -62,4 +62,33 @@ describe('loadConfig', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it('does not overwrite file config false with undefined runtime config values', () => {
+    const home = mkdtempSync(join(tmpdir(), 'biwenger-focus-config-'));
+    const configDir = join(home, '.openclaw');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'openclaw.json'), JSON.stringify({
+      plugins: {
+        entries: {
+          'biwenger-focus': {
+            config: {
+              market_report_enabled: false
+            }
+          }
+        }
+      }
+    }));
+
+    try {
+      const config = loadConfig({
+        market_report_enabled: undefined
+      }, {
+        HOME: home
+      });
+
+      expect(config.marketReportEnabled).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
