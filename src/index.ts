@@ -30,8 +30,8 @@ interface OpenClawApiLike {
     start: () => Promise<void> | void;
     stop: () => Promise<void> | void;
   }) => void | Promise<void>;
-  getConfig?: () => OpenClawRuntimeConfig;
-  config?: OpenClawRuntimeConfig;
+  getConfig?: () => unknown;
+  config?: unknown;
 }
 
 class PluginRuntime {
@@ -181,14 +181,28 @@ class PluginRuntime {
 
   private resolveConfig(api: OpenClawApiLike): OpenClawRuntimeConfig {
     if (typeof api.getConfig === 'function') {
-      return api.getConfig() ?? {};
+      return this.normalizeConfig(api.getConfig());
     }
 
     if (api.config && typeof api.config === 'object') {
-      return api.config;
+      return this.normalizeConfig(api.config);
     }
 
     return {};
+  }
+
+  private normalizeConfig(value: unknown): OpenClawRuntimeConfig {
+    if (!value || typeof value !== 'object') return {};
+
+    const record = value as Record<string, unknown>;
+    const nested = record.config && typeof record.config === 'object'
+      ? record.config as Record<string, unknown>
+      : {};
+
+    return {
+      ...record,
+      ...nested
+    };
   }
 }
 
@@ -197,7 +211,7 @@ let startupPromise: Promise<void> | null = null;
 const PLUGIN_META = {
   id: 'biwenger-focus',
   name: 'Biwenger Focus',
-  version: '0.1.30'
+  version: '0.1.31'
 };
 
 function reportStartupError(error: unknown): void {

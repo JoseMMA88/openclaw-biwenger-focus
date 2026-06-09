@@ -130,6 +130,9 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
 
   const tz = toStringValue(rawConfig.tz) ?? env.TZ ?? 'Europe/Madrid';
   const logLevel = (toStringValue(rawConfig.log_level) ?? env.LOG_LEVEL ?? 'info') as LogLevel;
+  const marketReportEnabled = env.MARKET_REPORT_ENABLED !== undefined
+    ? toBoolean(env.MARKET_REPORT_ENABLED, true)
+    : toBoolean(rawConfig.market_report_enabled, true);
 
   return {
     mcpCommand,
@@ -146,7 +149,7 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     maxConsecutiveErrors: toPositiveInt(env.FOCUS_MAX_CONSECUTIVE_ERRORS, 15),
     biddingPollSec: toPositiveInt(env.FOCUS_BIDDING_POLL_SEC, 900),
     armedMaxPollSec: toPositiveInt(env.FOCUS_ARMED_MAX_POLL_SEC, 900),
-    marketReportEnabled: toBoolean(rawConfig.market_report_enabled ?? env.MARKET_REPORT_ENABLED, true),
+    marketReportEnabled,
     marketReportTickSec: toPositiveInt(rawConfig.market_report_tick_sec ?? env.MARKET_REPORT_TICK_SEC, 60),
     marketReportOpeningOnly: toBoolean(rawConfig.market_report_opening_only ?? env.MARKET_REPORT_OPENING_ONLY, true),
     marketReportHour: Math.max(0, Math.min(23, toPositiveInt(rawConfig.market_report_hour ?? env.MARKET_REPORT_HOUR, 9))),
