@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 
 import type { LogLevel } from './logger.js';
@@ -47,6 +47,42 @@ export interface OpenClawRuntimeConfig {
   market_report_hour?: unknown;
   market_report_minute?: unknown;
   market_report_top_limit?: unknown;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function readOpenClawPluginConfig(env: NodeJS.ProcessEnv): OpenClawRuntimeConfig {
+  const candidates = [
+    toStringValue(env.OPENCLAW_CONFIG_PATH),
+    env.HOME ? resolve(env.HOME, '.openclaw/openclaw.json') : null
+  ].filter((entry): entry is string => Boolean(entry));
+
+  for (const candidate of candidates) {
+    try {
+      if (!existsSync(candidate)) continue;
+      const root = asRecord(JSON.parse(readFileSync(candidate, 'utf8')));
+      const plugins = asRecord(root?.plugins);
+      const entries = asRecord(plugins?.entries);
+      const entry = asRecord(entries?.['biwenger-focus']);
+      const config = asRecord(entry?.config);
+      if (config) return config;
+    } catch {
+      // Ignore malformed or inaccessible host config; OpenClaw validation reports those separately.
+    }
+  }
+
+  return {};
+}
+
+function normalizeRuntimeConfig(value: OpenClawRuntimeConfig): OpenClawRuntimeConfig {
+  const record = asRecord(value);
+  const nested = asRecord(record?.config);
+  return {
+    ...record,
+    ...nested
+  };
 }
 
 function toStringValue(value: unknown): string | null {
@@ -99,14 +135,20 @@ function parseMcpArgs(value: unknown, fallback: string): string[] {
 }
 
 export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.ProcessEnv = process.env): PluginConfig {
-  const configuredMcpCommand = toStringValue(rawConfig.mcp_command) ?? toStringValue(env.MCP_COMMAND);
+  const fileConfig = readOpenClawPluginConfig(env);
+  const effectiveConfig = {
+    ...fileConfig,
+    ...normalizeRuntimeConfig(rawConfig)
+  };
+
+  const configuredMcpCommand = toStringValue(effectiveConfig.mcp_command) ?? toStringValue(env.MCP_COMMAND);
   const mcpCommand = (() => {
     if (!configuredMcpCommand) return process.execPath || '/usr/bin/node';
     if (configuredMcpCommand === 'node') return process.execPath || configuredMcpCommand;
     return configuredMcpCommand;
   })();
   const defaultMcpEntry = '/opt/biwenger-mcp/dist/server.js';
-  const mcpArgs = parseMcpArgs(rawConfig.mcp_args ?? env.MCP_ARGS, defaultMcpEntry);
+  const mcpArgs = parseMcpArgs(effectiveConfig.mcp_args ?? env.MCP_ARGS, defaultMcpEntry);
   const mcpEntry = mcpArgs[0];
   const inferredMcpCwd = (() => {
     if (!mcpEntry) return undefined;
@@ -117,22 +159,22 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     }
     return entryDir;
   })();
-  const configuredMcpCwd = toStringValue(rawConfig.mcp_cwd) ?? toStringValue(env.MCP_CWD) ?? inferredMcpCwd;
+  const configuredMcpCwd = toStringValue(effectiveConfig.mcp_cwd) ?? toStringValue(env.MCP_CWD) ?? inferredMcpCwd;
   const mcpCwd = configuredMcpCwd && existsSync(resolve(configuredMcpCwd))
     ? resolve(configuredMcpCwd)
     : undefined;
 
-  const dbPathRaw = toStringValue(rawConfig.db_path) ?? env.FOCUS_DB_PATH ?? '/var/lib/openclaw/biwenger-focus.db';
+  const dbPathRaw = toStringValue(effectiveConfig.db_path) ?? env.FOCUS_DB_PATH ?? '/var/lib/openclaw/biwenger-focus.db';
   const dbPath = resolve(dbPathRaw);
 
-  const telegramBotToken = toStringValue(rawConfig.telegram_bot_token) ?? toStringValue(env.TELEGRAM_BOT_TOKEN);
-  const telegramChatId = toStringValue(rawConfig.telegram_chat_id) ?? toStringValue(env.TELEGRAM_CHAT_ID);
+  const telegramBotToken = toStringValue(effectiveConfig.telegram_bot_token) ?? toStringValue(env.TELEGRAM_BOT_TOKEN);
+  const telegramChatId = toStringValue(effectiveConfig.telegram_chat_id) ?? toStringValue(env.TELEGRAM_CHAT_ID);
 
-  const tz = toStringValue(rawConfig.tz) ?? env.TZ ?? 'Europe/Madrid';
-  const logLevel = (toStringValue(rawConfig.log_level) ?? env.LOG_LEVEL ?? 'info') as LogLevel;
+  const tz = toStringValue(effectiveConfig.tz) ?? env.TZ ?? 'Europe/Madrid';
+  const logLevel = (toStringValue(effectiveConfig.log_level) ?? env.LOG_LEVEL ?? 'info') as LogLevel;
   const marketReportEnabled = env.MARKET_REPORT_ENABLED !== undefined
     ? toBoolean(env.MARKET_REPORT_ENABLED, true)
-    : toBoolean(rawConfig.market_report_enabled, true);
+    : toBoolean(effectiveConfig.market_report_enabled, true);
 
   return {
     mcpCommand,
@@ -150,11 +192,11 @@ export function loadConfig(rawConfig: OpenClawRuntimeConfig = {}, env: NodeJS.Pr
     biddingPollSec: toPositiveInt(env.FOCUS_BIDDING_POLL_SEC, 900),
     armedMaxPollSec: toPositiveInt(env.FOCUS_ARMED_MAX_POLL_SEC, 900),
     marketReportEnabled,
-    marketReportTickSec: toPositiveInt(rawConfig.market_report_tick_sec ?? env.MARKET_REPORT_TICK_SEC, 60),
-    marketReportOpeningOnly: toBoolean(rawConfig.market_report_opening_only ?? env.MARKET_REPORT_OPENING_ONLY, true),
-    marketReportHour: Math.max(0, Math.min(23, toPositiveInt(rawConfig.market_report_hour ?? env.MARKET_REPORT_HOUR, 9))),
-    marketReportMinute: Math.max(0, Math.min(59, toPositiveInt(rawConfig.market_report_minute ?? env.MARKET_REPORT_MINUTE, 0))),
-    marketReportTopLimit: toPositiveInt(rawConfig.market_report_top_limit ?? env.MARKET_REPORT_TOP_LIMIT, 10),
+    marketReportTickSec: toPositiveInt(effectiveConfig.market_report_tick_sec ?? env.MARKET_REPORT_TICK_SEC, 60),
+    marketReportOpeningOnly: toBoolean(effectiveConfig.market_report_opening_only ?? env.MARKET_REPORT_OPENING_ONLY, true),
+    marketReportHour: Math.max(0, Math.min(23, toPositiveInt(effectiveConfig.market_report_hour ?? env.MARKET_REPORT_HOUR, 9))),
+    marketReportMinute: Math.max(0, Math.min(59, toPositiveInt(effectiveConfig.market_report_minute ?? env.MARKET_REPORT_MINUTE, 0))),
+    marketReportTopLimit: toPositiveInt(effectiveConfig.market_report_top_limit ?? env.MARKET_REPORT_TOP_LIMIT, 10),
     defaults: {
       startWhenRemainingSec: 3600,
       bidStep: 50000,
