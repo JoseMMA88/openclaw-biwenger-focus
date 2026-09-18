@@ -74,7 +74,7 @@ El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara 
 
 El workflow contempla automaticamente CET y CEST. Antes de escribir consulta la liga, no envia cambios si el interruptor ya tiene el valor deseado y vuelve a consultar despues para verificarlo. No modifica `auctionsFreePlayers` ni ningun otro ajuste.
 
-Configura estos secretos del repositorio en GitHub Actions:
+Configura estos secretos en el Environment `Secrets` de GitHub Actions:
 
 - `BIWENGER_EMAIL`
 - `BIWENGER_PASSWORD`
