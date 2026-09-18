@@ -95,7 +95,7 @@ export class BiwengerAuctionSettings {
     const body = await this.readJson(response);
 
     if (!response.ok) {
-      throw new Error(`Biwenger request failed with HTTP ${response.status}`);
+      throw new Error(`Biwenger ${init.method ?? 'GET'} ${path} failed with HTTP ${response.status}`);
     }
 
     return body;

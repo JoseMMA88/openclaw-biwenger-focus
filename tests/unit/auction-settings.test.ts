@@ -87,4 +87,17 @@ describe('BiwengerAuctionSettings', () => {
       enabled: true
     })).rejects.toThrow('Biwenger did not persist auctions=true');
   });
+
+  it('identifies a failed operation without exposing its request body', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ error: 'invalid credentials' }, 400));
+    const service = new BiwengerAuctionSettings(fetchMock);
+
+    await expect(service.setState({
+      email: 'admin@example.com',
+      password: 'secret',
+      leagueId: 1500231,
+      enabled: true
+    })).rejects.toThrow('Biwenger POST /auth/login failed with HTTP 400');
+  });
 });
