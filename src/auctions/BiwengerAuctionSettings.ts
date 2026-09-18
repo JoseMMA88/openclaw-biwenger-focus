@@ -22,6 +22,11 @@ interface League {
   settings: LeagueSettings;
 }
 
+interface LeagueSession {
+  token: string;
+  userId: number;
+}
+
 type Fetcher = typeof fetch;
 
 const API_URL = 'https://biwenger.as.com/api/v2';
@@ -31,14 +36,15 @@ export class BiwengerAuctionSettings {
 
   async setState(input: SetAuctionStateInput): Promise<SetAuctionStateResult> {
     const token = await this.login(input.email, input.password);
-    const current = await this.getLeague(input.leagueId, token);
+    const session = await this.getLeagueSession(input.leagueId, token);
+    const current = await this.getLeague(input.leagueId, session);
 
     if (current.settings.auctions === input.enabled) {
       return { changed: false, enabled: input.enabled };
     }
 
-    await this.updateLeague(input.leagueId, token, current, input.enabled);
-    const verified = await this.getLeague(input.leagueId, token);
+    await this.updateLeague(input.leagueId, session, current, input.enabled);
+    const verified = await this.getLeague(input.leagueId, session);
     if (verified.settings.auctions !== input.enabled) {
       throw new Error(`Biwenger did not persist auctions=${input.enabled}`);
     }
@@ -60,19 +66,39 @@ export class BiwengerAuctionSettings {
     return token;
   }
 
-  private async getLeague(leagueId: number, token: string): Promise<League> {
-    const response = await this.request(this.leaguePath(leagueId), {
+  private async getLeagueSession(leagueId: number, token: string): Promise<LeagueSession> {
+    const response = await this.request('/account', {
       method: 'GET',
       headers: this.authorization(token)
+    });
+    const account = this.asRecord(this.asRecord(response).data);
+    const leagues = Array.isArray(account.leagues) ? account.leagues : [];
+    const selected = leagues
+      .map((entry) => this.asRecord(entry))
+      .find((entry) => Number(entry.id) === leagueId);
+    const user = selected ? this.asRecord(selected.user) : null;
+    const userId = Number(user?.id);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new Error(`League ${leagueId} is not available for this Biwenger account`);
+    }
+
+    return { token, userId };
+  }
+
+  private async getLeague(leagueId: number, session: LeagueSession): Promise<League> {
+    const response = await this.request(this.leaguePath(leagueId), {
+      method: 'GET',
+      headers: this.leagueAuthorization(leagueId, session)
     });
 
     return this.asLeague(this.asRecord(response).data);
   }
 
-  private async updateLeague(leagueId: number, token: string, league: League, enabled: boolean): Promise<void> {
+  private async updateLeague(leagueId: number, session: LeagueSession, league: League, enabled: boolean): Promise<void> {
     await this.request(this.leaguePath(leagueId), {
       method: 'PUT',
-      headers: this.authorization(token),
+      headers: this.leagueAuthorization(leagueId, session),
       body: JSON.stringify({
         name: league.name,
         scoreID: league.scoreID,
@@ -89,6 +115,8 @@ export class BiwengerAuctionSettings {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json; charset=utf-8',
+        'X-Lang': 'es',
+        'X-Version': '631',
         ...init.headers
       }
     });
@@ -118,6 +146,14 @@ export class BiwengerAuctionSettings {
 
   private authorization(token: string): Record<string, string> {
     return { Authorization: `Bearer ${token}` };
+  }
+
+  private leagueAuthorization(leagueId: number, session: LeagueSession): Record<string, string> {
+    return {
+      ...this.authorization(session.token),
+      'X-League': String(leagueId),
+      'X-User': String(session.userId)
+    };
   }
 
   private asLeague(value: unknown): League {

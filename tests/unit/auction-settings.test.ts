@@ -18,10 +18,15 @@ const league = {
   settings: { auctions: false, auctionsFreePlayers: 20 }
 };
 
+const account = {
+  leagues: [{ id: 1500231, user: { id: 9876 } }]
+};
+
 describe('BiwengerAuctionSettings', () => {
   it('opens auctions with the exact settings diff and verifies the result', async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
       .mockResolvedValueOnce(jsonResponse({ data: league }))
       .mockResolvedValueOnce(jsonResponse({ data: { ...league, settings: { ...league.settings, auctions: true } } }))
       .mockResolvedValueOnce(jsonResponse({ data: { ...league, settings: { ...league.settings, auctions: true } } }));
@@ -35,8 +40,8 @@ describe('BiwengerAuctionSettings', () => {
     });
 
     expect(result).toEqual({ changed: true, enabled: true });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock).toHaveBeenNthCalledWith(3,
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenNthCalledWith(4,
       'https://biwenger.as.com/api/v2/league/1500231?fields=*,settings',
       expect.objectContaining({
         method: 'PUT',
@@ -49,8 +54,12 @@ describe('BiwengerAuctionSettings', () => {
         })
       })
     );
-    expect(fetchMock.mock.calls[2]?.[1]?.headers).toEqual(expect.objectContaining({
-      Authorization: 'Bearer session-token'
+    expect(fetchMock.mock.calls[3]?.[1]?.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer session-token',
+      'X-Lang': 'es',
+      'X-Version': '631',
+      'X-League': '1500231',
+      'X-User': '9876'
     }));
   });
 
@@ -58,6 +67,7 @@ describe('BiwengerAuctionSettings', () => {
     const openLeague = { ...league, settings: { ...league.settings, auctions: true } };
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
       .mockResolvedValueOnce(jsonResponse({ data: openLeague }));
     const service = new BiwengerAuctionSettings(fetchMock);
 
@@ -69,12 +79,13 @@ describe('BiwengerAuctionSettings', () => {
     });
 
     expect(result).toEqual({ changed: false, enabled: true });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('fails when Biwenger does not persist the requested state', async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
       .mockResolvedValueOnce(jsonResponse({ data: league }))
       .mockResolvedValueOnce(jsonResponse({ data: league }))
       .mockResolvedValueOnce(jsonResponse({ data: league }));
