@@ -64,6 +64,31 @@ Copia `.env.example` a `.env` y ajusta:
   - `BIWENGER_LEAGUE_ID`
   - `BIWENGER_USER_ID`
 
+## Automatizacion del interruptor de subastas
+
+El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara a las 07:00 del dia siguiente:
+
+- Jueves a las 23:07, hora de Madrid: activa el interruptor de subastas.
+- Domingo a las 23:07, hora de Madrid: desactiva el interruptor de subastas.
+- Ejecucion manual: permite elegir `open` o `close` desde GitHub Actions.
+
+El workflow contempla automaticamente CET y CEST. Antes de escribir consulta la liga, no envia cambios si el interruptor ya tiene el valor deseado y vuelve a consultar despues para verificarlo. No modifica `auctionsFreePlayers` ni ningun otro ajuste.
+
+Configura estos secretos del repositorio en GitHub Actions:
+
+- `BIWENGER_EMAIL`
+- `BIWENGER_PASSWORD`
+- `BIWENGER_LEAGUE_ID`
+
+Para una prueba local:
+
+```bash
+BIWENGER_EMAIL='...' \
+BIWENGER_PASSWORD='...' \
+BIWENGER_LEAGUE_ID='1500231' \
+npm run auctions:set -- open
+```
+
 ### Cómo llegan las credenciales al MCP
 
 - El plugin lanza `biwenger-mcp` por `stdio` heredando el `env` del proceso de OpenClaw.

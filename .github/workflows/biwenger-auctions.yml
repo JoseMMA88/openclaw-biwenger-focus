@@ -1,0 +1,75 @@
+name: Biwenger auction settings
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Auction switch state
+        required: true
+        type: choice
+        options:
+          - open
+          - close
+  schedule:
+    # 23:07 Europe/Madrid is 21:07 UTC in CEST and 22:07 UTC in CET.
+    - cron: '7 21,22 * * 0,4'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: biwenger-auction-settings
+  cancel-in-progress: false
+
+jobs:
+  update-auctions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve Madrid schedule
+        id: schedule
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_ACTION: ${{ inputs.action }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "action=$MANUAL_ACTION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          madrid_time="$(TZ=Europe/Madrid date +'%u %H')"
+          if [[ "$madrid_time" == "4 23" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "action=open" >> "$GITHUB_OUTPUT"
+          elif [[ "$madrid_time" == "7 23" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "action=close" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Outside the 23:00 Europe/Madrid execution window; skipping."
+          fi
+
+      - name: Check out repository
+        if: steps.schedule.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.schedule.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.schedule.outputs.should_run == 'true'
+        run: npm ci
+
+      - name: Update and verify auction settings
+        if: steps.schedule.outputs.should_run == 'true'
+        env:
+          BIWENGER_EMAIL: ${{ secrets.BIWENGER_EMAIL }}
+          BIWENGER_PASSWORD: ${{ secrets.BIWENGER_PASSWORD }}
+          BIWENGER_LEAGUE_ID: ${{ secrets.BIWENGER_LEAGUE_ID }}
+        run: npm run auctions:set -- "${{ steps.schedule.outputs.action }}"

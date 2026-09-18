@@ -6,6 +6,7 @@
   "description": "OpenClaw plugin for automatic Biwenger auction focus bidding",
   "scripts": {
     "build": "tsc -p tsconfig.json && ([ dist/index.js -ef dist/biwenger-focus.js ] || cp dist/index.js dist/biwenger-focus.js) && cp openclaw.plugin.json dist/openclaw.plugin.json && rm -f src/openclaw.plugin.json",
+    "auctions:set": "tsx src/auctions/cli.ts",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"
