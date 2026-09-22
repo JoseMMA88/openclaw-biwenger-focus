@@ -11,9 +11,10 @@ on:
           - open
           - close
   schedule:
-    # Two idempotent attempts cover 23:07 Europe/Madrid in both CEST and CET.
+    # Two idempotent attempts cover Europe/Madrid in both CEST and CET.
+    # Open Thursday around 23:00 Madrid; close Sunday around 20:00 Madrid.
     - cron: '7 21,22 * * 4'
-    - cron: '7 21,22 * * 0'
+    - cron: '7 18,19 * * 0'
 
 permissions:
   contents: read
@@ -44,7 +45,7 @@ jobs:
 
           case "$EVENT_SCHEDULE" in
             '7 21,22 * * 4') action=open ;;
-            '7 21,22 * * 0') action=close ;;
+            '7 18,19 * * 0') action=close ;;
             *) echo "Unknown schedule: $EVENT_SCHEDULE" >&2; exit 1 ;;
           esac
 

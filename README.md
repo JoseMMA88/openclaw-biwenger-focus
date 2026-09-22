@@ -69,7 +69,7 @@ Copia `.env.example` a `.env` y ajusta:
 El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara a las 07:00 del dia siguiente:
 
 - Jueves alrededor de las 23:00, hora de Madrid: activa el interruptor de subastas.
-- Domingo alrededor de las 23:00, hora de Madrid: desactiva el interruptor de subastas.
+- Domingo alrededor de las 20:00, hora de Madrid: desactiva el interruptor de subastas.
 - Ejecucion manual: permite elegir `open` o `close` desde GitHub Actions.
 
 El workflow programa dos intentos idempotentes para contemplar CET, CEST y posibles retrasos de GitHub. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Antes de escribir consulta la liga, no envia cambios si el interruptor ya tiene el valor deseado y vuelve a consultar despues para verificarlo. No modifica `auctionsFreePlayers` ni ningun otro ajuste.
