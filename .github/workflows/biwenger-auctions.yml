@@ -11,8 +11,9 @@ on:
           - open
           - close
   schedule:
-    # 23:07 Europe/Madrid is 21:07 UTC in CEST and 22:07 UTC in CET.
-    - cron: '7 21,22 * * 0,4'
+    # Two idempotent attempts cover 23:07 Europe/Madrid in both CEST and CET.
+    - cron: '7 21,22 * * 4'
+    - cron: '7 21,22 * * 0'
 
 permissions:
   contents: read
@@ -32,6 +33,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
           MANUAL_ACTION: ${{ inputs.action }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -40,17 +42,14 @@ jobs:
             exit 0
           fi
 
-          madrid_time="$(TZ=Europe/Madrid date +'%u %H')"
-          if [[ "$madrid_time" == "4 23" || "$madrid_time" == "5 00" ]]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "action=open" >> "$GITHUB_OUTPUT"
-          elif [[ "$madrid_time" == "7 23" || "$madrid_time" == "1 00" ]]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "action=close" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Outside the Europe/Madrid execution window; skipping."
-          fi
+          case "$EVENT_SCHEDULE" in
+            '7 21,22 * * 4') action=open ;;
+            '7 21,22 * * 0') action=close ;;
+            *) echo "Unknown schedule: $EVENT_SCHEDULE" >&2; exit 1 ;;
+          esac
+
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+          echo "action=$action" >> "$GITHUB_OUTPUT"
 
       - name: Check out repository
         if: steps.schedule.outputs.should_run == 'true'
