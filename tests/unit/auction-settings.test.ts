@@ -24,12 +24,16 @@ const account = {
 
 describe('BiwengerAuctionSettings', () => {
   it('opens auctions with the exact settings diff and verifies the result', async () => {
+    const openLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15 }
+    };
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
       .mockResolvedValueOnce(jsonResponse({ data: account }))
       .mockResolvedValueOnce(jsonResponse({ data: league }))
-      .mockResolvedValueOnce(jsonResponse({ data: { ...league, settings: { ...league.settings, auctions: true } } }))
-      .mockResolvedValueOnce(jsonResponse({ data: { ...league, settings: { ...league.settings, auctions: true } } }));
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }));
     const service = new BiwengerAuctionSettings(fetchMock);
 
     const result = await service.setState({
@@ -50,7 +54,7 @@ describe('BiwengerAuctionSettings', () => {
           scoreID: league.scoreID,
           icon: league.icon,
           cover: league.cover,
-          settings: { auctions: true }
+          settings: { auctions: true, auctionsFreePlayers: 15 }
         })
       })
     );
@@ -63,8 +67,45 @@ describe('BiwengerAuctionSettings', () => {
     }));
   });
 
-  it('does not write when auctions already have the requested state', async () => {
-    const openLeague = { ...league, settings: { ...league.settings, auctions: true } };
+  it('closes auctions and removes free players from the auction market', async () => {
+    const openLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15 }
+    };
+    const closedLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: false, auctionsFreePlayers: 0 }
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: closedLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: closedLeague }));
+    const service = new BiwengerAuctionSettings(fetchMock);
+
+    const result = await service.setState({
+      email: 'admin@example.com',
+      password: 'secret',
+      leagueId: 1500231,
+      enabled: false
+    });
+
+    expect(result).toEqual({ changed: true, enabled: false });
+    expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({
+      name: league.name,
+      scoreID: league.scoreID,
+      icon: league.icon,
+      cover: league.cover,
+      settings: { auctions: false, auctionsFreePlayers: 0 }
+    });
+  });
+
+  it('does not write when both auction settings already have the requested state', async () => {
+    const openLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15 }
+    };
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
       .mockResolvedValueOnce(jsonResponse({ data: account }))
@@ -80,6 +121,31 @@ describe('BiwengerAuctionSettings', () => {
 
     expect(result).toEqual({ changed: false, enabled: true });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('corrects the free-player count when the switch already has the requested state', async () => {
+    const openLeague = { ...league, settings: { ...league.settings, auctions: true } };
+    const correctedLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15 }
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: correctedLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: correctedLeague }));
+    const service = new BiwengerAuctionSettings(fetchMock);
+
+    const result = await service.setState({
+      email: 'admin@example.com',
+      password: 'secret',
+      leagueId: 1500231,
+      enabled: true
+    });
+
+    expect(result).toEqual({ changed: true, enabled: true });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it('fails when Biwenger does not persist the requested state', async () => {
@@ -99,10 +165,31 @@ describe('BiwengerAuctionSettings', () => {
     })).rejects.toThrow('Biwenger did not persist auctions=true');
   });
 
+  it('fails when Biwenger does not persist the requested free-player count', async () => {
+    const switchOnlyLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true }
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: league }))
+      .mockResolvedValueOnce(jsonResponse({ data: switchOnlyLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: switchOnlyLeague }));
+    const service = new BiwengerAuctionSettings(fetchMock);
+
+    await expect(service.setState({
+      email: 'admin@example.com',
+      password: 'secret',
+      leagueId: 1500231,
+      enabled: true
+    })).rejects.toThrow('Biwenger did not persist auctionsFreePlayers=15');
+  });
+
   it('fails when Biwenger changes a setting unrelated to auctions', async () => {
     const changedLeague = {
       ...league,
-      settings: { ...league.settings, auctions: true, clauses: true }
+      settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15, clauses: true }
     };
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))

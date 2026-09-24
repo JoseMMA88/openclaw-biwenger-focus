@@ -30,9 +30,10 @@ async function main(): Promise<void> {
   });
 
   const state = enabled ? 'open' : 'closed';
+  const freePlayers = enabled ? 15 : 0;
   console.log(result.changed
-    ? `Biwenger auctions changed to ${state} and verified.`
-    : `Biwenger auctions were already ${state}; no change was sent.`);
+    ? `Biwenger auctions changed to ${state} with auctionsFreePlayers=${freePlayers} and verified.`
+    : `Biwenger auctions were already ${state} with auctionsFreePlayers=${freePlayers}; no change was sent.`);
 }
 
 main().catch((error: unknown) => {

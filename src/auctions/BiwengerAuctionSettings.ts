@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 export interface SetAuctionStateInput {
   email: string;
   password: string;
@@ -12,6 +14,7 @@ export interface SetAuctionStateResult {
 
 interface LeagueSettings extends Record<string, unknown> {
   auctions: boolean;
+  auctionsFreePlayers: number;
 }
 
 interface League {
@@ -30,6 +33,8 @@ interface LeagueSession {
 type Fetcher = typeof fetch;
 
 const API_URL = 'https://biwenger.as.com/api/v2';
+const OPEN_AUCTIONS_FREE_PLAYERS = 15;
+const CLOSED_AUCTIONS_FREE_PLAYERS = 0;
 
 export class BiwengerAuctionSettings {
   constructor(private readonly fetcher: Fetcher = fetch) {}
@@ -38,15 +43,22 @@ export class BiwengerAuctionSettings {
     const token = await this.login(input.email, input.password);
     const session = await this.getLeagueSession(input.leagueId, token);
     const current = await this.getLeague(input.leagueId, session);
+    const freePlayers = input.enabled
+      ? OPEN_AUCTIONS_FREE_PLAYERS
+      : CLOSED_AUCTIONS_FREE_PLAYERS;
 
-    if (current.settings.auctions === input.enabled) {
+    if (current.settings.auctions === input.enabled
+      && current.settings.auctionsFreePlayers === freePlayers) {
       return { changed: false, enabled: input.enabled };
     }
 
-    await this.updateLeague(input.leagueId, session, current, input.enabled);
+    await this.updateLeague(input.leagueId, session, current, input.enabled, freePlayers);
     const verified = await this.getLeague(input.leagueId, session);
     if (verified.settings.auctions !== input.enabled) {
       throw new Error(`Biwenger did not persist auctions=${input.enabled}`);
+    }
+    if (verified.settings.auctionsFreePlayers !== freePlayers) {
+      throw new Error(`Biwenger did not persist auctionsFreePlayers=${freePlayers}`);
     }
     const unrelatedChanges = this.changedSettings(current.settings, verified.settings);
     if (unrelatedChanges.length > 0) {
@@ -99,7 +111,13 @@ export class BiwengerAuctionSettings {
     return this.asLeague(this.asRecord(response).data);
   }
 
-  private async updateLeague(leagueId: number, session: LeagueSession, league: League, enabled: boolean): Promise<void> {
+  private async updateLeague(
+    leagueId: number,
+    session: LeagueSession,
+    league: League,
+    enabled: boolean,
+    freePlayers: number
+  ): Promise<void> {
     await this.request(this.leaguePath(leagueId), {
       method: 'PUT',
       headers: this.leagueAuthorization(leagueId, session),
@@ -108,7 +126,10 @@ export class BiwengerAuctionSettings {
         scoreID: league.scoreID,
         icon: league.icon,
         cover: league.cover,
-        settings: { auctions: enabled }
+        settings: {
+          auctions: enabled,
+          auctionsFreePlayers: freePlayers
+        }
       })
     });
   }
@@ -168,7 +189,10 @@ export class BiwengerAuctionSettings {
       || typeof league.scoreID !== 'number'
       || !this.isNullableString(league.icon)
       || !this.isNullableString(league.cover)
-      || typeof settings.auctions !== 'boolean') {
+      || typeof settings.auctions !== 'boolean'
+      || !Number.isInteger(settings.auctionsFreePlayers)
+      || Number(settings.auctionsFreePlayers) < 0
+      || Number(settings.auctionsFreePlayers) > 20) {
       throw new Error('Biwenger returned an unexpected league response');
     }
 
@@ -177,13 +201,18 @@ export class BiwengerAuctionSettings {
       scoreID: league.scoreID,
       icon: league.icon,
       cover: league.cover,
-      settings: { ...settings, auctions: settings.auctions }
+      settings: {
+        ...settings,
+        auctions: settings.auctions,
+        auctionsFreePlayers: Number(settings.auctionsFreePlayers)
+      }
     };
   }
 
   private changedSettings(before: LeagueSettings, after: LeagueSettings): string[] {
     const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
     keys.delete('auctions');
+    keys.delete('auctionsFreePlayers');
 
     return [...keys]
       .filter((key) => !isDeepStrictEqual(before[key], after[key]))
@@ -202,4 +231,3 @@ export class BiwengerAuctionSettings {
     return value === null || typeof value === 'string';
   }
 }
-import { isDeepStrictEqual } from 'node:util';
