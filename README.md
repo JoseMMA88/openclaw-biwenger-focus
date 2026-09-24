@@ -72,7 +72,7 @@ El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara 
 - Domingo alrededor de las 20:00, hora de Madrid: desactiva el interruptor de subastas.
 - Ejecucion manual: permite elegir `open` o `close` desde GitHub Actions.
 
-El workflow programa dos intentos idempotentes para contemplar CET, CEST y posibles retrasos de GitHub. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Antes de escribir consulta la liga, no envia cambios si el interruptor ya tiene el valor deseado y vuelve a consultar despues para verificarlo. No modifica `auctionsFreePlayers` ni ningun otro ajuste.
+El workflow programa dos intentos idempotentes para contemplar CET, CEST y posibles retrasos de GitHub. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Antes de escribir consulta la liga, no envia cambios si el interruptor ya tiene el valor deseado y vuelve a consultar despues para verificarlo. El job falla si detecta que Biwenger ha modificado cualquier ajuste distinto de `auctions`; no modifica `auctionsFreePlayers`, clausulas ni ningun otro ajuste.
 
 Configura estos secretos en el Environment `Secrets` de GitHub Actions:
 

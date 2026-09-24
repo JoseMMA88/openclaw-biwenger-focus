@@ -10,7 +10,7 @@ export interface SetAuctionStateResult {
   enabled: boolean;
 }
 
-interface LeagueSettings {
+interface LeagueSettings extends Record<string, unknown> {
   auctions: boolean;
 }
 
@@ -47,6 +47,10 @@ export class BiwengerAuctionSettings {
     const verified = await this.getLeague(input.leagueId, session);
     if (verified.settings.auctions !== input.enabled) {
       throw new Error(`Biwenger did not persist auctions=${input.enabled}`);
+    }
+    const unrelatedChanges = this.changedSettings(current.settings, verified.settings);
+    if (unrelatedChanges.length > 0) {
+      throw new Error(`Biwenger changed unrelated settings: ${unrelatedChanges.join(', ')}`);
     }
 
     return { changed: true, enabled: input.enabled };
@@ -173,8 +177,17 @@ export class BiwengerAuctionSettings {
       scoreID: league.scoreID,
       icon: league.icon,
       cover: league.cover,
-      settings: { auctions: settings.auctions }
+      settings: { ...settings, auctions: settings.auctions }
     };
+  }
+
+  private changedSettings(before: LeagueSettings, after: LeagueSettings): string[] {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    keys.delete('auctions');
+
+    return [...keys]
+      .filter((key) => !isDeepStrictEqual(before[key], after[key]))
+      .sort();
   }
 
   private asRecord(value: unknown): Record<string, unknown> {
@@ -189,3 +202,4 @@ export class BiwengerAuctionSettings {
     return value === null || typeof value === 'string';
   }
 }
+import { isDeepStrictEqual } from 'node:util';

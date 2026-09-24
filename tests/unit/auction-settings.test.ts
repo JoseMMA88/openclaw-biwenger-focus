@@ -99,6 +99,27 @@ describe('BiwengerAuctionSettings', () => {
     })).rejects.toThrow('Biwenger did not persist auctions=true');
   });
 
+  it('fails when Biwenger changes a setting unrelated to auctions', async () => {
+    const changedLeague = {
+      ...league,
+      settings: { ...league.settings, auctions: true, clauses: true }
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: league }))
+      .mockResolvedValueOnce(jsonResponse({ data: changedLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: changedLeague }));
+    const service = new BiwengerAuctionSettings(fetchMock);
+
+    await expect(service.setState({
+      email: 'admin@example.com',
+      password: 'secret',
+      leagueId: 1500231,
+      enabled: true
+    })).rejects.toThrow('Biwenger changed unrelated settings: clauses');
+  });
+
   it('identifies a failed operation without exposing its request body', async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ error: 'invalid credentials' }, 400));
