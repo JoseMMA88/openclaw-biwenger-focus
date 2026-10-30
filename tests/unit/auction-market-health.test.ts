@@ -28,4 +28,10 @@ describe('Post-cycle market verification', () => {
   it('ignores expired auctions', () => {
     expect(marketSummary({ auctions: [{ ...auction, until: 1000 }] }, cycle, now).activeFree).toBe(0);
   });
+  it('recognizes an empty real market which omits the optional auctions collection', () => {
+    const summary = marketSummary({ status: 200, data: { status: {}, sales: [], offers: [] } }, cycle, now);
+    expect(summary).toEqual({ activeFree: 0, newFree: 0, undatedFree: 0 });
+    expect(() => verifyMarket(summary, true)).toThrow('No free-player');
+    expect(() => verifyMarket(summary, false)).not.toThrow();
+  });
 });

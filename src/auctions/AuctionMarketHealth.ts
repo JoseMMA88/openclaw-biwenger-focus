@@ -21,13 +21,18 @@ export function marketSummary(payload: unknown, cycle: Date, now: Date): {
 } {
   const root = record(payload);
   const market = root.data === undefined ? root : record(root.data);
-  if (!Object.hasOwn(market, 'auctions') || (market.auctions !== null && !Array.isArray(market.auctions))) {
+  // The official client uses auctions ?? []: empty markets omit this collection.
+  const recognizedEmpty = !Object.hasOwn(market, 'auctions') && Array.isArray(market.sales)
+    && Array.isArray(market.offers) && market.status !== null && typeof market.status === 'object';
+  if ((!Object.hasOwn(market, 'auctions') && !recognizedEmpty)
+    || (market.auctions !== undefined && market.auctions !== null && !Array.isArray(market.auctions))) {
     throw new Error('Biwenger market response has no recognized auctions collection');
   }
   let activeFree = 0;
   let newFree = 0;
   let undatedFree = 0;
-  for (const value of market.auctions ?? []) {
+  const auctions = Array.isArray(market.auctions) ? market.auctions : [];
+  for (const value of auctions) {
     const auction = record(value);
     if (auction.user !== undefined && auction.user !== null) {
       const user = record(auction.user);
