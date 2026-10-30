@@ -52,6 +52,10 @@ async function main(): Promise<void> {
   const service = new BiwengerAuctionSettings();
   if (!window) {
     const state = await service.inspect(input, true);
+    const root = state.market && typeof state.market === 'object' ? state.market as Record<string, unknown> : {};
+    const shape = Object.fromEntries(Object.entries(root).map(([key, value]) => [key,
+      Array.isArray(value) ? `array(${value.length})` : value && typeof value === 'object' ? Object.keys(value).slice(0, 30) : typeof value]));
+    console.log(`Market response schema (keys only): ${JSON.stringify(shape)}`);
     const summary = marketSummary(state.market, now, now);
     console.log(`Read-only diagnostics: auctions=${state.enabled}, freePlayers=${state.freePlayers}, market=${JSON.stringify(summary)}`);
     return;
