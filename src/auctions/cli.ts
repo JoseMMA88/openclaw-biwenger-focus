@@ -1,4 +1,5 @@
 import { BiwengerAuctionSettings } from './BiwengerAuctionSettings.js';
+import { auctionWindow, scheduledAction } from './AuctionSchedule.js';
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -22,11 +23,17 @@ function desiredState(action: string | undefined): boolean {
 
 async function main(): Promise<void> {
   const enabled = desiredState(process.argv[2]);
+  const schedule = process.env.AUCTION_SCHEDULE;
+  const now = new Date();
+  if (schedule && (scheduledAction(schedule, now) === 'open') !== enabled) {
+    throw new Error('Schedule does not match the requested auction action');
+  }
   const result = await new BiwengerAuctionSettings().setState({
     email: requiredEnv('BIWENGER_EMAIL'),
     password: requiredEnv('BIWENGER_PASSWORD'),
     leagueId: leagueIdFromEnv(),
-    enabled
+    enabled,
+    writeDeadline: schedule ? auctionWindow(now)!.cycle : undefined
   });
 
   const state = enabled ? 'open' : 'closed';

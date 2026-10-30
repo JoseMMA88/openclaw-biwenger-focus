@@ -1,10 +1,12 @@
 import { isDeepStrictEqual } from 'node:util';
+import { BiwengerHttpClient, BiwengerHttpError, type BiwengerHttpClientOptions } from './BiwengerHttpClient.js';
 
 export interface SetAuctionStateInput {
   email: string;
   password: string;
   leagueId: number;
   enabled: boolean;
+  writeDeadline?: Date;
 }
 
 export interface SetAuctionStateResult {
@@ -32,12 +34,31 @@ interface LeagueSession {
 
 type Fetcher = typeof fetch;
 
-const API_URL = 'https://biwenger.as.com/api/v2';
 const OPEN_AUCTIONS_FREE_PLAYERS = 15;
 const CLOSED_AUCTIONS_FREE_PLAYERS = 0;
 
 export class BiwengerAuctionSettings {
-  constructor(private readonly fetcher: Fetcher = fetch) {}
+  private readonly client: BiwengerHttpClient;
+  private readonly sleep: (ms: number) => Promise<void>;
+
+  constructor(fetcher: Fetcher = fetch, options: BiwengerHttpClientOptions = {}) {
+    this.client = new BiwengerHttpClient(fetcher, options);
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  }
+
+  async inspect(input: Omit<SetAuctionStateInput, 'enabled'>, includeMarket = false): Promise<{
+    enabled: boolean;
+    freePlayers: number;
+    market?: unknown;
+  }> {
+    const token = await this.login(input.email, input.password);
+    const session = await this.getLeagueSession(input.leagueId, token);
+    const league = await this.getLeague(input.leagueId, session);
+    const market = includeMarket ? await this.request('/market', {
+      method: 'GET', headers: this.leagueAuthorization(input.leagueId, session)
+    }) : undefined;
+    return { enabled: league.settings.auctions, freePlayers: league.settings.auctionsFreePlayers, market };
+  }
 
   async setState(input: SetAuctionStateInput): Promise<SetAuctionStateResult> {
     const token = await this.login(input.email, input.password);
@@ -52,17 +73,38 @@ export class BiwengerAuctionSettings {
       return { changed: false, enabled: input.enabled };
     }
 
-    await this.updateLeague(input.leagueId, session, current, input.enabled, freePlayers);
-    const verified = await this.getLeague(input.leagueId, session);
+    let latest = current;
+    let verified = current;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (input.writeDeadline && Date.now() >= input.writeDeadline.getTime()) {
+        throw new Error('Auction write deadline has passed; manual review required');
+      }
+      let writeError: BiwengerHttpError | undefined;
+      try {
+        await this.updateLeague(input.leagueId, session, latest, input.enabled, freePlayers);
+      } catch (error) {
+        if (!(error instanceof BiwengerHttpError) || !error.retryable) throw error;
+        writeError = error;
+      }
+      // A timed-out PUT may already have committed: read before considering another write.
+      verified = await this.getLeague(input.leagueId, session);
+      const unrelatedChanges = this.changedSettings(current.settings, verified.settings);
+      if (unrelatedChanges.length > 0) {
+        throw new Error(`Biwenger changed unrelated settings: ${unrelatedChanges.join(', ')}`);
+      }
+      if (verified.settings.auctions === input.enabled && verified.settings.auctionsFreePlayers === freePlayers) break;
+      if (!writeError || attempt === 1) {
+        if (writeError) throw writeError;
+        break;
+      }
+      await this.sleep(writeError.retryAfterMs);
+      latest = verified;
+    }
     if (verified.settings.auctions !== input.enabled) {
       throw new Error(`Biwenger did not persist auctions=${input.enabled}`);
     }
     if (verified.settings.auctionsFreePlayers !== freePlayers) {
       throw new Error(`Biwenger did not persist auctionsFreePlayers=${freePlayers}`);
-    }
-    const unrelatedChanges = this.changedSettings(current.settings, verified.settings);
-    if (unrelatedChanges.length > 0) {
-      throw new Error(`Biwenger changed unrelated settings: ${unrelatedChanges.join(', ')}`);
     }
 
     return { changed: true, enabled: input.enabled };
@@ -135,33 +177,7 @@ export class BiwengerAuctionSettings {
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {
-    const response = await this.fetcher(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json; charset=utf-8',
-        'X-Lang': 'es',
-        ...init.headers
-      }
-    });
-    const body = await this.readJson(response);
-
-    if (!response.ok) {
-      throw new Error(`Biwenger ${init.method ?? 'GET'} ${path} failed with HTTP ${response.status}`);
-    }
-
-    return body;
-  }
-
-  private async readJson(response: Response): Promise<unknown> {
-    const text = await response.text();
-    if (!text) return {};
-
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      throw new Error('Biwenger returned an invalid JSON response');
-    }
+    return this.client.request(path, init);
   }
 
   private leaguePath(leagueId: number): string {

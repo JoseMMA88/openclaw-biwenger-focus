@@ -11,13 +11,15 @@ on:
           - open
           - close
   schedule:
-    # Two idempotent attempts cover Europe/Madrid in both CEST and CET.
-    # Open Thursday around 23:00 Madrid; close Sunday around 20:00 Madrid.
-    - cron: '7 21,22 * * 4'
-    - cron: '7 18,19 * * 0'
+    - cron: '7 23 * * 4'
+      timezone: Europe/Madrid
+    - cron: '7 20 * * 0'
+      timezone: Europe/Madrid
 
 permissions:
   contents: read
+  issues: write
+  actions: read
 
 concurrency:
   group: biwenger-auction-settings
@@ -25,7 +27,7 @@ concurrency:
 
 jobs:
   update-auctions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: Secrets
     timeout-minutes: 10
     steps:
@@ -44,8 +46,8 @@ jobs:
           fi
 
           case "$EVENT_SCHEDULE" in
-            '7 21,22 * * 4') action=open ;;
-            '7 18,19 * * 0') action=close ;;
+            '7 23 * * 4') action=open ;;
+            '7 20 * * 0') action=close ;;
             *) echo "Unknown schedule: $EVENT_SCHEDULE" >&2; exit 1 ;;
           esac
 
@@ -68,9 +70,32 @@ jobs:
         run: npm ci
 
       - name: Update and verify auction settings
+        id: update
         if: steps.schedule.outputs.should_run == 'true'
         env:
           BIWENGER_EMAIL: ${{ secrets.BIWENGER_EMAIL }}
           BIWENGER_PASSWORD: ${{ secrets.BIWENGER_PASSWORD }}
           BIWENGER_LEAGUE_ID: ${{ secrets.BIWENGER_LEAGUE_ID }}
+          AUCTION_SCHEDULE: ${{ github.event.schedule }}
         run: npm run auctions:set -- "${{ steps.schedule.outputs.action }}"
+
+      - name: Check supervisor availability
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/biwenger-auction-supervisor.yml" --jq '.state')
+          if [[ "$state" != active ]]; then
+            echo 'Auction supervisor is not active' >&2
+            exit 1
+          fi
+
+      - name: Report or resolve primary incident
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUCTION_ALERT_KEY: primary
+          AUCTION_ALERT_ASSIGNEE: JoseMMA88
+          AUCTION_ALERT_STATE: ${{ job.status == 'success' && 'recovered' || 'failure' }}
+          AUCTION_ALERT_MESSAGE: ${{ job.status == 'success' && 'El workflow principal ha aplicado y verificado los ajustes; supervisor activo.' || 'El workflow principal ha fallado. Revisar los logs y el estado de la liga antes del ciclo de las 07:00 de Madrid.' }}
+        run: node scripts/auction-alert.mjs

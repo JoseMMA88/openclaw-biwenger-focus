@@ -72,11 +72,29 @@ El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara 
 - Domingo alrededor de las 20:00, hora de Madrid: configura `auctions=false` y `auctionsFreePlayers=0`.
 - Ejecucion manual: permite elegir `open` o `close` desde GitHub Actions.
 
-El workflow programa dos intentos idempotentes para contemplar CET, CEST y posibles retrasos de GitHub. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Antes de escribir consulta la liga, no envia cambios si `auctions` y `auctionsFreePlayers` ya tienen los valores deseados y vuelve a consultar despues para verificar ambos. El job falla si detecta que Biwenger ha modificado cualquier otro ajuste, incluidas las clausulas.
+El cron principal usa `timezone: Europe/Madrid`: jueves a las 23:07 para abrir y domingo a las 20:07 para cerrar, con cambio de hora automatico. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Si una ejecucion programada llega fuera de su ventana anterior a las 07:00, falla y requiere revision manual. Las ejecuciones manuales `open` y `close` son explicitas y permiten actuar fuera de esa ventana.
+
+Antes de escribir consulta la liga, no envia cambios si `auctions` y `auctionsFreePlayers` ya tienen los valores deseados y vuelve a consultar despues para verificar ambos. El job falla si detecta que Biwenger ha modificado cualquier otro ajuste, incluidas las clausulas. Las peticiones tienen un timeout de 15 segundos que incluye la lectura del cuerpo. Las lecturas y el login hacen como maximo tres intentos para errores de red, HTTP 408, 429 y 5xx, con espera y `Retry-After` limitado a 30 segundos. No se reintentan automaticamente errores de credenciales o permisos.
+
+Un `PUT` interrumpido puede haberse guardado: se vuelve a leer la liga antes de repetirlo. Si los valores ya son correctos no se repite; si siguen incorrectos se permite una segunda escritura tras esperar, usando los metadatos recien leidos. Nunca se repite una escritura si se detectan cambios ajenos o ya ha vencido el plazo del ciclo. El timeout global de cada job sigue siendo de 10 minutos.
 
 Las peticiones no incluyen `X-Version`. Se ha comprobado con autenticacion que Biwenger acepta el login, la consulta de cuenta, la lectura de liga y el guardado de ajustes sin esa cabecera. Asi se evita fijar una version de cliente que Biwenger pueda retirar. Esto no garantiza compatibilidad con futuros cambios de la API.
 
-La verificacion actual confirma los ajustes guardados, no la generacion de jugadores en el ciclo de las 07:00. Las siguientes mejoras prioritarias son un control anticipado del estado con aviso si falla o falta una ejecucion, reintentos limitados ante errores transitorios y una comprobacion posterior del mercado. El timeout global del job es de 10 minutos; actualmente no hay timeout individual por peticion ni reintentos HTTP.
+### Supervisor y alertas
+
+El segundo workflow `Biwenger auction supervisor` se programa cada hora al minuto 37 UTC. Calcula su ventana usando Madrid en el momento real de ejecucion:
+
+- Comprueba siempre que el workflow principal este activo. El principal comprueba a su vez que el supervisor este activo.
+- Desde el jueves a las 23:00 hasta el viernes antes de las 07:00, comprueba y repara la apertura; desde el domingo a las 20:00 hasta el lunes antes de las 07:00, comprueba y repara el cierre.
+- Tras 90 minutos de margen desde el inicio de la ventana, avisa si no consta una ejecucion correcta del workflow principal, aunque el supervisor haya reparado los ajustes.
+- De las 07:00 a las 12:00 del viernes y lunes, solo lee: comprueba ajustes y consulta `/market`. Al abrir exige confirmar nuevas subastas de jugadores libres del ciclo; al cerrar detecta nuevas subastas de libres sin considerar un fallo que sigan terminando subastas antiguas. Fechas ausentes o formatos desconocidos generan una incidencia; no se interpretan como mercado vacio o correcto.
+- Fuera de esas ventanas no modifica ni consulta la liga; solo comprueba disponibilidad del workflow principal. Un lanzamiento manual del supervisor permite ademas diagnostico de solo lectura fuera de las ventanas.
+
+Los dos workflows comparten un grupo de concurrencia para serializar sus escrituras. Las incidencias se crean en GitHub con titulos `[Biwenger auctions] primary`, `workflow`, `cycle` o `supervision`, enlace a logs y texto sin credenciales; se asignan a `JoseMMA88`. Se deduplican los fallos repetidos y se cierran automaticamente al confirmar la recuperacion de cada comprobacion. No se necesitan secretos adicionales: se usa `GITHUB_TOKEN` con permisos `actions: read` e `issues: write`. Las notificaciones dependen de la configuracion de notificaciones de GitHub del destinatario. El lanzamiento manual del supervisor admite `test_alert=true` para crear y cerrar una incidencia `self-test` y comprobar los permisos reales.
+
+El workflow `Auction automation tests` ejecuta tests, TypeScript y validacion sintactica del script de avisos en cambios relevantes. Se fija el runner a Ubuntu 24.04 para evitar cambios automaticos de version de `ubuntu-latest`.
+
+Limitaciones: GitHub puede retrasar o perder ejecuciones; estos horarios no son una garantia de entrega. Todo reside en GitHub por decision del administrador, por lo que una caida completa o la desactivacion simultanea de ambos workflows no puede detectarse desde fuera. En repositorios publicos GitHub puede desactivar cron tras 60 dias sin actividad: revisar ambos workflows periodicamente. Un fallo detectado despues de las 07:00 se comunica, pero no puede recuperar automaticamente el ciclo perdido. La consulta del mercado confirma observaciones, no garantiza el proceso interno de generacion de Biwenger.
 
 Configura estos secretos en el Environment `Secrets` de GitHub Actions:
 

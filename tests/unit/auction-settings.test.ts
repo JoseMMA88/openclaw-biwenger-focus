@@ -58,12 +58,11 @@ describe('BiwengerAuctionSettings', () => {
         })
       })
     );
-    expect(fetchMock.mock.calls[3]?.[1]?.headers).toEqual(expect.objectContaining({
-      Authorization: 'Bearer session-token',
-      'X-Lang': 'es',
-      'X-League': '1500231',
-      'X-User': '9876'
-    }));
+    const headers = new Headers(fetchMock.mock.calls[3]?.[1]?.headers);
+    expect(headers.get('Authorization')).toBe('Bearer session-token');
+    expect(headers.get('X-Lang')).toBe('es');
+    expect(headers.get('X-League')).toBe('1500231');
+    expect(headers.get('X-User')).toBe('9876');
     for (const [, init] of fetchMock.mock.calls) {
       expect(new Headers(init?.headers).has('X-Version')).toBe(false);
     }
@@ -220,5 +219,36 @@ describe('BiwengerAuctionSettings', () => {
       leagueId: 1500231,
       enabled: true
     })).rejects.toThrow('Biwenger POST /auth/login failed with HTTP 400');
+  });
+
+  it.each([true, false])('rereads an ambiguous PUT before retrying (already committed=%s)', async (committed) => {
+    const openLeague = { ...league, settings: { ...league.settings, auctions: true, auctionsFreePlayers: 15 } };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: league }))
+      .mockRejectedValueOnce(new Error('connection interrupted'))
+      .mockResolvedValueOnce(jsonResponse({ data: committed ? openLeague : league }));
+    if (!committed) fetchMock
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }))
+      .mockResolvedValueOnce(jsonResponse({ data: openLeague }));
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const service = new BiwengerAuctionSettings(fetchMock, { sleep });
+    await expect(service.setState({ email: 'admin@example.com', password: 'secret', leagueId: 1500231, enabled: true }))
+      .resolves.toEqual({ changed: true, enabled: true });
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method))
+      .toEqual(committed ? ['POST', 'GET', 'GET', 'PUT', 'GET'] : ['POST', 'GET', 'GET', 'PUT', 'GET', 'PUT', 'GET']);
+    expect(sleep).toHaveBeenCalledTimes(committed ? 0 : 1);
+  });
+
+  it('does not write when authentication and reads consume the remaining deadline', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'session-token' }))
+      .mockResolvedValueOnce(jsonResponse({ data: account }))
+      .mockResolvedValueOnce(jsonResponse({ data: league }));
+    await expect(new BiwengerAuctionSettings(fetchMock).setState({
+      email: 'admin@example.com', password: 'secret', leagueId: 1500231, enabled: true, writeDeadline: new Date(0)
+    })).rejects.toThrow('write deadline has passed');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

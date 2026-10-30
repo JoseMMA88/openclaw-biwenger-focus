@@ -1,0 +1,68 @@
+name: Biwenger auction supervisor
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: Create and close a controlled GitHub alert test
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '37 * * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: biwenger-auction-settings
+  cancel-in-progress: false
+
+jobs:
+  supervise:
+    runs-on: ubuntu-24.04
+    environment: Secrets
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check workflow, repair before deadline and inspect market after cycle
+        id: supervise
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUCTION_ALERT_ASSIGNEE: JoseMMA88
+          BIWENGER_EMAIL: ${{ secrets.BIWENGER_EMAIL }}
+          BIWENGER_PASSWORD: ${{ secrets.BIWENGER_PASSWORD }}
+          BIWENGER_LEAGUE_ID: ${{ secrets.BIWENGER_LEAGUE_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            npx tsx src/auctions/supervisor-cli.ts --diagnostic
+          else
+            npx tsx src/auctions/supervisor-cli.ts
+          fi
+      - name: Test GitHub incident creation and recovery
+        if: ${{ success() && inputs.test_alert }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUCTION_ALERT_ASSIGNEE: JoseMMA88
+          AUCTION_ALERT_KEY: self-test
+          AUCTION_ALERT_MESSAGE: Prueba controlada de alertas de subastas. No indica una averia real; esta incidencia se cierra automaticamente al terminar la prueba.
+        run: |
+          AUCTION_ALERT_STATE=failure node scripts/auction-alert.mjs
+          AUCTION_ALERT_STATE=recovered node scripts/auction-alert.mjs
+      - name: Report or resolve supervisor infrastructure incident
+        if: ${{ !cancelled() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUCTION_ALERT_KEY: supervision
+          AUCTION_ALERT_ASSIGNEE: JoseMMA88
+          AUCTION_ALERT_STATE: ${{ steps.supervise.outputs.completed == 'true' && 'recovered' || 'failure' }}
+          AUCTION_ALERT_MESSAGE: ${{ steps.supervise.outputs.completed == 'true' && 'El supervisor ha completado sus comprobaciones. Las incidencias del ciclo se gestionan por separado.' || 'El supervisor no ha podido completar las comprobaciones. Revisar credenciales, permisos, disponibilidad de Biwenger y logs antes del ciclo de las 07:00 de Madrid.' }}
+        run: node scripts/auction-alert.mjs
