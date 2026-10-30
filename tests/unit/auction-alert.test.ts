@@ -7,10 +7,10 @@ const json = (data: unknown) => new Response(JSON.stringify(data));
 describe('GitHub incident alerts', () => {
   it('creates one managed issue then deduplicates repeated failures', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(json([])).mockResolvedValueOnce(json({ number: 1 }));
-    expect(await reportAlert({ ...options, fetcher })).toBe('created');
+    expect(await reportAlert({ ...options, fetcher })).toEqual({ status: 'created', issueNumber: 1 });
     const body = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
     fetcher.mockResolvedValueOnce(json([{ number: 1, ...body }]));
-    expect(await reportAlert({ ...options, fetcher })).toBe('unchanged');
+    expect(await reportAlert({ ...options, fetcher })).toEqual({ status: 'unchanged', issueNumber: 1 });
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
@@ -18,7 +18,7 @@ describe('GitHub incident alerts', () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(json([{ number: 12, title: '[Biwenger auctions] primary', body: 'Manual issue' }]))
       .mockResolvedValueOnce(json({ number: 13 }));
-    expect(await reportAlert({ ...options, fetcher })).toBe('created');
+    expect(await reportAlert({ ...options, fetcher })).toEqual({ status: 'created', issueNumber: 13 });
     expect(fetcher.mock.calls[1]?.[0]).toBe('https://api.github.com/repos/test/repo/issues');
   });
 
@@ -26,12 +26,20 @@ describe('GitHub incident alerts', () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(json([{ number: 1, title: '[Biwenger auctions] primary', body: '<!-- biwenger-auction-alert:primary -->' }]))
       .mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({}));
-    expect(await reportAlert({ ...options, state: 'recovered', fetcher })).toBe('resolved');
+    expect(await reportAlert({ ...options, state: 'recovered', fetcher })).toEqual({ status: 'resolved', issueNumber: 1 });
     expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body))).toMatchObject({ state: 'closed' });
   });
 
   it('does not expose raw transport errors', async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error('private token secret'));
     await expect(reportAlert({ ...options, fetcher })).rejects.toThrow('GitHub alert request failed or timed out');
+  });
+  it('can resolve a just-created issue directly without waiting for list consistency', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ number: 3, state: 'open', title: '[Biwenger auctions] primary', body: '<!-- biwenger-auction-alert:primary -->' }))
+      .mockResolvedValueOnce(json({})).mockResolvedValueOnce(json({}));
+    expect(await reportAlert({ ...options, state: 'recovered', issueNumber: 3, fetcher }))
+      .toEqual({ status: 'resolved', issueNumber: 3 });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://api.github.com/repos/test/repo/issues/3');
   });
 });

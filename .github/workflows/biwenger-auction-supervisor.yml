@@ -54,9 +54,7 @@ jobs:
           AUCTION_ALERT_ASSIGNEE: JoseMMA88
           AUCTION_ALERT_KEY: self-test
           AUCTION_ALERT_MESSAGE: Prueba controlada de alertas de subastas. No indica una averia real; esta incidencia se cierra automaticamente al terminar la prueba.
-        run: |
-          AUCTION_ALERT_STATE=failure node scripts/auction-alert.mjs
-          AUCTION_ALERT_STATE=recovered node scripts/auction-alert.mjs
+        run: node scripts/auction-alert.mjs self-test
       - name: Report or resolve supervisor infrastructure incident
         if: ${{ !cancelled() }}
         env:
