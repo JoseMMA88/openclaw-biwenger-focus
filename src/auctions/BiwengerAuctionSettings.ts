@@ -141,7 +141,6 @@ export class BiwengerAuctionSettings {
         Accept: 'application/json',
         'Content-Type': 'application/json; charset=utf-8',
         'X-Lang': 'es',
-        'X-Version': '632',
         ...init.headers
       }
     });

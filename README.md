@@ -74,6 +74,10 @@ El workflow `Biwenger auction settings` prepara el estado que Biwenger aplicara 
 
 El workflow programa dos intentos idempotentes para contemplar CET, CEST y posibles retrasos de GitHub. La accion se obtiene del cron de origen, no de la hora a la que GitHub termine iniciando el job. Antes de escribir consulta la liga, no envia cambios si `auctions` y `auctionsFreePlayers` ya tienen los valores deseados y vuelve a consultar despues para verificar ambos. El job falla si detecta que Biwenger ha modificado cualquier otro ajuste, incluidas las clausulas.
 
+Las peticiones no incluyen `X-Version`. Se ha comprobado con autenticacion que Biwenger acepta el login, la consulta de cuenta, la lectura de liga y el guardado de ajustes sin esa cabecera. Asi se evita fijar una version de cliente que Biwenger pueda retirar. Esto no garantiza compatibilidad con futuros cambios de la API.
+
+La verificacion actual confirma los ajustes guardados, no la generacion de jugadores en el ciclo de las 07:00. Las siguientes mejoras prioritarias son un control anticipado del estado con aviso si falla o falta una ejecucion, reintentos limitados ante errores transitorios y una comprobacion posterior del mercado. El timeout global del job es de 10 minutos; actualmente no hay timeout individual por peticion ni reintentos HTTP.
+
 Configura estos secretos en el Environment `Secrets` de GitHub Actions:
 
 - `BIWENGER_EMAIL`

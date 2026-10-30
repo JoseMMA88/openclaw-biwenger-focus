@@ -61,10 +61,12 @@ describe('BiwengerAuctionSettings', () => {
     expect(fetchMock.mock.calls[3]?.[1]?.headers).toEqual(expect.objectContaining({
       Authorization: 'Bearer session-token',
       'X-Lang': 'es',
-      'X-Version': '632',
       'X-League': '1500231',
       'X-User': '9876'
     }));
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(new Headers(init?.headers).has('X-Version')).toBe(false);
+    }
   });
 
   it('closes auctions and removes free players from the auction market', async () => {
