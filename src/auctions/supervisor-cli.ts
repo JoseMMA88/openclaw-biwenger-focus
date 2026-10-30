@@ -41,7 +41,11 @@ async function main(): Promise<void> {
   const workflow = await github('/actions/workflows/biwenger-auctions.yml');
   const workflowProblems = workflow.state === 'active' ? [] : ['El workflow principal no esta activo. Revisar su estado y reactivarlo si procede.'];
   alert('workflow', workflowProblems, 'El workflow principal esta activo.');
-  if (workflowProblems.length) process.exitCode = 1;
+  if (workflowProblems.length) {
+    // A manually disabled primary workflow is an administrator stop, not permission to repair.
+    process.exitCode = 1;
+    return;
+  }
   if (!window && process.argv[2] !== '--diagnostic') {
     console.log('No auction-cycle window; workflow availability checked.');
     return;

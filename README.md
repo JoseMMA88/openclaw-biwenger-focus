@@ -84,7 +84,7 @@ Las peticiones no incluyen `X-Version`. Se ha comprobado con autenticacion que B
 
 El segundo workflow `Biwenger auction supervisor` se programa cada hora al minuto 37 UTC. Calcula su ventana usando Madrid en el momento real de ejecucion:
 
-- Comprueba siempre que el workflow principal este activo. El principal comprueba a su vez que el supervisor este activo.
+- Comprueba siempre que el workflow principal este activo. Si esta desactivado, avisa y no modifica la liga, respetando una posible parada del administrador. El principal comprueba a su vez que el supervisor este activo.
 - Desde el jueves a las 23:00 hasta el viernes antes de las 07:00, comprueba y repara la apertura; desde el domingo a las 20:00 hasta el lunes antes de las 07:00, comprueba y repara el cierre.
 - Tras 90 minutos de margen desde el inicio de la ventana, avisa si no consta una ejecucion correcta del workflow principal, aunque el supervisor haya reparado los ajustes.
 - De las 07:00 a las 12:00 del viernes y lunes, solo lee: comprueba ajustes y consulta `/market`. Al abrir exige confirmar nuevas subastas de jugadores libres del ciclo; al cerrar detecta nuevas subastas de libres sin considerar un fallo que sigan terminando subastas antiguas. Fechas ausentes o formatos desconocidos generan una incidencia; no se interpretan como mercado vacio o correcto.
