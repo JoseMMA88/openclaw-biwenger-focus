@@ -61,7 +61,7 @@ describe('BiwengerAuctionSettings', () => {
     expect(fetchMock.mock.calls[3]?.[1]?.headers).toEqual(expect.objectContaining({
       Authorization: 'Bearer session-token',
       'X-Lang': 'es',
-      'X-Version': '631',
+      'X-Version': '632',
       'X-League': '1500231',
       'X-User': '9876'
     }));
