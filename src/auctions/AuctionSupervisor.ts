@@ -11,6 +11,7 @@ export async function superviseCycle(options: {
   phase: 'preflight' | 'postcycle';
   repaired: boolean;
   problems: string[];
+  primaryWarning?: string;
   summary?: ReturnType<typeof marketSummary>;
 }> {
   const clock = options.now ?? (() => new Date());
@@ -19,6 +20,7 @@ export async function superviseCycle(options: {
   if (!window) return null;
   const { service, credentials } = options;
   const enabled = window.action === 'open';
+  const freePlayers = enabled ? 15 : 0;
   let repaired = false;
   const problems: string[] = [];
   if (window.phase === 'preflight') {
@@ -30,11 +32,8 @@ export async function superviseCycle(options: {
     repaired = result.changed;
   }
   const state = await service.inspect(credentials, window.phase === 'postcycle');
-  if (state.enabled !== enabled || state.freePlayers !== (enabled ? 15 : 0)) {
-    problems.push(`Configuracion incorrecta: se esperaba auctions=${enabled}, auctionsFreePlayers=${enabled ? 15 : 0}. Revisar antes del siguiente ciclo.`);
-  }
-  if (now.getTime() >= window.start.getTime() + 90 * 60000 && !await options.hasSuccessfulRun(window.start)) {
-    problems.push('No consta una ejecucion correcta del workflow principal en esta ventana. El supervisor comprueba y, antes de las 07:00, repara los ajustes; revisar tambien el cron principal.');
+  if (state.enabled !== enabled || state.freePlayers !== freePlayers) {
+    problems.push(`Configuracion incorrecta: se esperaba auctions=${enabled}, auctionsFreePlayers=${freePlayers}. Revisar antes del siguiente ciclo.`);
   }
   let summary: ReturnType<typeof marketSummary> | undefined;
   if (window.phase === 'postcycle') {
@@ -42,5 +41,12 @@ export async function superviseCycle(options: {
     try { verifyMarket(summary, enabled); }
     catch (error) { problems.push(error instanceof Error ? error.message : 'Post-cycle market verification failed'); }
   }
-  return { phase: window.phase, repaired, problems, summary };
+  let primaryWarning: string | undefined;
+  if (now.getTime() >= window.start.getTime() + 90 * 60000 && !await options.hasSuccessfulRun(window.start)) {
+    const situation = problems.length > 0
+      ? 'El estado de Biwenger requiere revisión; consulta las comprobaciones anteriores.'
+      : `El supervisor ha verificado los ajustes de ${enabled ? 'apertura' : 'cierre'} en Biwenger (auctions=${enabled}, auctionsFreePlayers=${freePlayers}). No hace falta intervenir en la liga.`;
+    primaryWarning = `Aviso de puntualidad: no consta una ejecución correcta del workflow principal en esta ventana. ${situation}`;
+  }
+  return { phase: window.phase, repaired, problems, primaryWarning, summary };
 }

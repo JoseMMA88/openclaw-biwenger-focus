@@ -86,7 +86,7 @@ El segundo workflow `Biwenger auction supervisor` se programa cada hora al minut
 
 - Comprueba siempre que el workflow principal este activo. Si esta desactivado, avisa y no modifica la liga, respetando una posible parada del administrador. El principal comprueba a su vez que el supervisor este activo.
 - Desde el jueves a las 23:00 hasta el viernes antes de las 07:00, comprueba y repara la apertura; desde el domingo a las 20:00 hasta el lunes antes de las 07:00, comprueba y repara el cierre.
-- Tras 90 minutos de margen desde el inicio de la ventana, avisa si no consta una ejecucion correcta del workflow principal, aunque el supervisor haya reparado los ajustes.
+- Tras 90 minutos de margen desde el inicio de la ventana, avisa si no consta una ejecucion correcta del workflow principal. Si las comprobaciones de Biwenger son correctas, la incidencia indica que no hace falta intervenir en la liga y el job del supervisor termina correctamente con un aviso. Si detecta un problema de configuracion o de mercado, indica que requiere revision y el job falla.
 - De las 07:00 a las 12:00 del viernes y lunes, solo lee: comprueba ajustes y consulta `/market`. Al abrir exige confirmar nuevas subastas de jugadores libres del ciclo; al cerrar detecta nuevas subastas de libres sin considerar un fallo que sigan terminando subastas antiguas. Fechas ausentes o formatos desconocidos generan una incidencia; no se interpretan como mercado vacio o correcto.
 - Fuera de esas ventanas no modifica ni consulta la liga; solo comprueba disponibilidad del workflow principal. Un lanzamiento manual del supervisor permite ademas diagnostico de solo lectura fuera de las ventanas.
 

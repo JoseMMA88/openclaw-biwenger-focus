@@ -21,21 +21,38 @@ describe('Auction supervisor', () => {
     expect(options.service.setState).toHaveBeenCalledWith({ ...credentials, enabled: true, writeDeadline: new Date('2026-10-30T06:00:00Z') });
     expect(options.service.inspect).toHaveBeenCalledWith(credentials, false);
   });
-  it('reports an absent primary execution even when repair succeeds', async () => {
-    const options = setup('2026-10-30T04:37:00Z');
+  it('reports a missing primary as a warning when the supervisor verifies the closing settings', async () => {
+    const options = setup('2026-11-08T21:21:36Z');
     options.hasSuccessfulRun.mockResolvedValue(false);
-    expect((await superviseCycle(options))?.problems.join()).toContain('No consta');
+    options.service.inspect.mockResolvedValue({ enabled: false, freePlayers: 0 });
+    const result = await superviseCycle(options);
+    expect(result).toMatchObject({ repaired: true, problems: [] });
+    expect(result?.primaryWarning).toContain('ajustes de cierre');
+    expect(result?.primaryWarning).toContain('No hace falta intervenir');
+  });
+  it('does not reassure the administrator when the backup cannot verify the settings', async () => {
+    const options = setup('2026-11-08T21:21:36Z');
+    options.hasSuccessfulRun.mockResolvedValue(false);
+    const result = await superviseCycle(options);
+    expect(result?.problems.join()).toContain('Configuracion incorrecta');
+    expect(result?.primaryWarning).toContain('requiere revisión');
+    expect(result?.primaryWarning).not.toContain('No hace falta intervenir');
   });
   it('does not misreport the primary as missing during the initial grace period', async () => {
     const options = setup('2026-10-29T22:37:00Z');
     options.hasSuccessfulRun.mockResolvedValue(false);
-    expect((await superviseCycle(options))?.problems).toEqual([]);
+    const result = await superviseCycle(options);
+    expect(result?.problems).toEqual([]);
+    expect(result?.primaryWarning).toBeUndefined();
     expect(options.hasSuccessfulRun).not.toHaveBeenCalled();
   });
   it('only inspects after the cycle and reports missing generated auctions', async () => {
     const options = setup('2026-10-30T07:37:00Z');
+    options.hasSuccessfulRun.mockResolvedValue(false);
     options.service.inspect.mockResolvedValue({ enabled: true, freePlayers: 15, market: { data: { auctions: [] } } });
-    expect((await superviseCycle(options))?.problems.join()).toContain('No free-player');
+    const result = await superviseCycle(options);
+    expect(result?.problems.join()).toContain('No free-player');
+    expect(result?.primaryWarning).not.toContain('No hace falta intervenir');
     expect(options.service.setState).not.toHaveBeenCalled();
   });
   it('prevents repair if the deadline passes while preparing a preflight run', async () => {

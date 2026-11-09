@@ -75,7 +75,12 @@ async function main(): Promise<void> {
   });
   if (!result) return;
   console.log(`Auction supervision: ${result.phase}, repaired=${result.repaired}, market=${JSON.stringify(result.summary ?? null)}`);
-  alert('cycle', result.problems, 'Configuracion y comprobaciones del ciclo correctas.');
+  const findings = [...result.problems];
+  if (result.primaryWarning) {
+    findings.push(result.primaryWarning);
+    console.warn(`::warning::${result.primaryWarning}`);
+  }
+  alert('cycle', findings, 'Configuracion y comprobaciones del ciclo correctas.');
   if (result.problems.length) {
     result.problems.forEach((message) => console.error(message));
     process.exitCode = 1;
